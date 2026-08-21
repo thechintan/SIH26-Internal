@@ -12,12 +12,12 @@ head: 3052d21
 
 ## Shipped
 Works, pushed, safe for others to build on.
-- Nothing yet — Day 0, fresh start.
+- Next.js 14 project scaffold + route skeleton
+- Landing page (`/`) static shell
+- Route folders: `app/(citizen)`, `app/report`, `app/my-reports`, `app/track/[id]`
 
 ## In flight
 Started, not safe to depend on yet.
-- Next.js 14+ project scaffold + route skeleton — expect end of this session
-- Landing page (`/`) static shell — expect end of this session
 
 ## I need from you
 - **@E** — Zod contracts in `lib/contracts/` for `POST /api/reports` and `GET /api/my-reports`. Blocks: Step 5 of the report wizard (can't validate submission shape without them). Also need MSW mocks wired for both endpoints so I can develop offline.
