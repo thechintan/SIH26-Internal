@@ -1,30 +1,68 @@
 ---
-owner: UNCLAIMED
+owner: Dev
 workstream: A citizen
-last_sync: <ISO 8601, set by /sync>
-head: <short sha this file describes, set by /sync>
+last_sync: 2026-08-22T04:50:54+05:30
+head: 3052d21
 ---
 
-# A citizen — UNCLAIMED
+# A citizen — Dev
 
 ## Owns
-Citizen-facing app. Paths depend on decisions/002 — `citizen_app/**` or `app/(citizen)/**`.
+`app/(citizen)/**`, `app/report/**`, `app/my-reports/**`, `app/track/**`
 
 ## Shipped
 Works, pushed, safe for others to build on.
-- <thing> — `path/to/file.ts`
+- Nothing yet — Day 0, fresh start.
 
 ## In flight
 Started, not safe to depend on yet.
-- <thing> — expect by <when>
+- Next.js 14+ project scaffold + route skeleton — expect end of this session
+- Landing page (`/`) static shell — expect end of this session
 
 ## I need from you
-- **@name** — <what you need>. Blocks: <what of yours is stuck without it>.
+- **@E** — Zod contracts in `lib/contracts/` for `POST /api/reports` and `GET /api/my-reports`. Blocks: Step 5 of the report wizard (can't validate submission shape without them). Also need MSW mocks wired for both endpoints so I can develop offline.
+- **@E** — Team decision on the 3 open enum questions from `decisions/003`: (1) Add `STRAY_ANIMAL` category? (2) Voice notes on reports? (3) Severity self-report fed to scorer? My Step 2 tile grid layout depends on the final category count (3×3 only works for exactly 9).
+- **@B** — Presigned upload URL endpoint shape — needed for Step 5 upload progress bar. Will work against MSW mock until real endpoint lands.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
-- <what changed> → affects <who> → they must <do what>
+- *(none yet)*
 
 ## Notes for my own agent
-Deep context: decisions made, gotchas found, dead ends already explored.
-Teammates' agents read this too when working near my paths.
+
+### Day 0 context
+- Repo is a clean slate. Only `.claude/` folder exists. No Next.js project yet.
+- All 5 status files were UNCLAIMED at session start.
+- git user: `Devprajapati09 <dprajapati@962007>`
+- Node v22.19.0, npm 10.9.3 — confirmed working.
+- `npx create-next-app@latest` resolves to v16.3.2 (Next.js 15 App Router) — compatible with PRD requirement of Next.js 14+.
+
+### Critical rules to remember
+- Citizens create **reports**. Admins act on **incidents**. Never blur this in the UI.
+- `/my-reports` and `/track/[id]` show the citizen their **report** status, not raw incident data.
+- Confirmation screen after submit MUST show "N others reported this" — this is what makes duplication feel like contribution.
+- The "Was this actually fixed?" No button is load-bearing — it triggers `REOPENED` status.
+- Auth (phone OTP) is deferred to submit time, not app open. Draft state survives auth.
+- Upload MUST show a visible progress bar. Tab must stay open. Presigned URL direct to Supabase Storage.
+- Step 2 category grid: use tile icons, NOT a dropdown.
+- GPS `accuracy` value must be captured silently and sent to backend — feeds adaptive clustering radius.
+- Test camera, GPS, and upload on a REAL phone, not Chrome DevTools.
+
+### Danger zones
+- Do NOT import anything from old `citizen_app/` (Flutter), `admin-portal/` (Vite+React), or `backend/` (NestJS+MongoDB). Those branches are dead.
+- Do NOT touch: `app/api/**`, `supabase/**`, `lib/engine/**`, `lib/contracts/**`, `mocks/**`, `app/admin/**`, `app/field/**`
+- Shared files that need a Heads Up before touching: `package.json`, `tailwind.config.ts`, `next.config.js`, anything in `.claude/context/`
+
+### Enums I consume (frozen — changing requires a decision file)
+- **Category (9):** `STRUCTURAL`, `ELECTRICAL`, `DRAIN_MANHOLE`, `WATER_LEAK`, `POTHOLE`, `FOOTPATH`, `GARBAGE`, `STREETLIGHT`, `OTHER`
+- **Status (9):** `SUBMITTED`, `ACKNOWLEDGED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `VERIFIED`, `REOPENED`, `REJECTED`, `DUPLICATE`
+- **Severity self-report:** `MINOR`, `MODERATE`, `SEVERE` (advisory only, Step 4)
+
+### Phase plan
+1. Scaffold Next.js + route skeleton
+2. Landing page + public Leaflet map
+3. 5-step report wizard (Steps 1–5) against MSW mocks
+4. OTP auth at submit time
+5. My Reports list + Track timeline (all 9 states)
+6. Verification loop (Yes/No prompt)
+7. Polish on real phone — Lighthouse mobile > 85
