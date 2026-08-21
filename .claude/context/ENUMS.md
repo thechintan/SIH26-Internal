@@ -3,8 +3,13 @@
 PRD §11 rule 1: freeze these before anyone writes feature code. All five
 workstreams import them, so a later change breaks four people at once.
 
-**Status: proposed, awaiting team sign-off** — see `decisions/003`. Once ratified,
-changing anything here requires a new decision file.
+**Status: 🔒 FROZEN** — ratified by `decisions/004`, which closed the three open
+questions in `003`. Changing any member below now requires a new decision file.
+Canonical definition lives in `lib/contracts/enums.ts`; nobody redeclares these.
+
+One exception: the **priority tier thresholds** are still provisional and are not
+part of the freeze — `003` requires re-checking them against the 500 seeded
+reports, which do not exist yet.
 
 ## Category — 9 members
 

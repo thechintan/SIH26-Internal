@@ -1,8 +1,8 @@
 ---
 owner: Durgesh
 workstream: B backend
-last_sync: 2026-08-22T05:00:28+05:30
-head: da6188f
+last_sync: 2026-08-22T05:40:00+05:30
+head: 8d4f56b
 ---
 
 # B backend — Durgesh
@@ -10,63 +10,107 @@ head: da6188f
 ## Owns
 `app/api/**`, `supabase/**`, `scripts/seed*`
 
-Also running workstream **E** (see `e-integration.md`). Two hats, two files, never
-merged — B is API/DB/infra, E is contracts/mocks/merge/demo.
+Also running workstream **E** (see `e-integration.md`). Two hats, two files,
+never merged — B is API/DB/infra, E is contracts/mocks/merge/demo.
 
 ## Shipped
 Works, pushed, safe for others to build on.
-- Nothing yet — Day 0.
+
+- **`supabase/migrations/0001_init.sql`** — PostGIS, the four frozen enums as
+  Postgres types, all nine tables (`users`, `departments`, `wards`,
+  `category_severity`, `incidents`, `reports`, `incident_reporters`,
+  `status_history`, `report_verifications`), the three required indexes, ticket-ID
+  generation, and reference seed rows.
+  - `report_count` is maintained by a trigger from `incident_reporters`, so it is
+    a count of distinct people and cannot be inflated by resubmitting.
+  - The status-transition guard is a database trigger, not just API validation —
+    the cron, the seed script and any manual fix all write through Postgres too.
+    It also rejects `RESOLVED` without a `resolution_photo_url`.
+- **`supabase/migrations/0002_rls.sql`** — RLS for all four roles. Incidents are
+  publicly readable (PRD §9.1 wants the map browsable logged out); reports are
+  not — someone else's photo, exact coordinates and free-text note are not public
+  data. Role escalation is blocked by a trigger, since a `WITH CHECK` cannot see
+  the old row.
+- **`supabase/migrations/0003_spatial_functions.sql`** — `find_nearby_open_incident`,
+  `find_previous_closed_incident`, `recompute_centroid`, `ward_for_point`,
+  `report_count_last_hour`, `public_stats`.
+- **`scripts/seed.ts`** — 500 reports across eight weighted hotspots, 120
+  citizens, 6 wards. Deterministic seed, so the demo database is identical every
+  run. Reports reprints the reports-per-incident ratio and warns if it falls
+  under PRD §13's 2.5× target.
+- **`supabase/README.md`** — how to apply and seed.
 
 ## In flight
 Started, not safe to depend on yet.
-- Supabase project + PostGIS enabled — expect this session
-- `supabase/migrations/0001_init.sql` — enums, `reports`, `incidents`, `users`,
-  `departments`, `wards`, `category_severity`, `status_history`,
-  `incident_reporters` + the three required indexes (PRD §5) — expect this session
-- `scripts/seed.ts` — 500 synthetic reports, realistically clustered — **day-1
-  unblock for A, C and D**, expect this session
+- Supabase project itself — **blocked on the human**, see below
+- `app/api/**` route handlers against the frozen contracts — next, once A's
+  scaffold lands so there is a `package.json` to install into
+- Vercel Cron endpoint for rescoring — after the routes
 
 ## I need from you
-- **@Dev (A)** — do not create `app/api/**` or `supabase/**` even as stubs while
-  scaffolding. If `create-next-app` generates `app/api/hello`, delete it and tell
-  me. Blocks: nothing yet, but a stray route file will collide with my ingest work.
-- **@C** — confirm you want clustering to run **inside** the ingest transaction
-  (I call your pure function from `POST /api/reports`) rather than on a queue.
-  Blocks: the shape of my ingest endpoint. Assuming synchronous-in-request until
-  you say otherwise.
-- **@C** — the exact `priority_breakdown` JSON shape you will write. I will make
-  the column `jsonb` either way, but E needs it to freeze the Zod schema D renders.
+- **@Durgesh (human, not an agent task)** — create the Supabase project, enable
+  PostGIS, and put `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. I cannot create accounts or
+  handle credentials. Blocks: running the migrations and the seed, which blocks
+  C and D having real data.
+- **@Dev (A)** — do not create `app/api/**` or `supabase/**`, even as stubs. If
+  `create-next-app` generates `app/api/hello`, delete it.
+- **@C** — confirm clustering runs synchronously inside the ingest request rather
+  than on a queue. I am building `POST /api/reports` that way. Blocks: the shape
+  of the ingest endpoint. `0003` gives you the spatial primitives; the decisions
+  (join or seed, radius adaptation, when a recurrence chain starts) are yours in
+  `lib/engine`.
+- **@C** — the `priority_breakdown` JSON shape. The column is `jsonb` either way,
+  but E needs it to unfreeze the provisional schema D renders.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
-- *(none yet)*
+- **Schema landed** → affects C and D → the table and column names in
+  `0001_init.sql` are what the API will return. Read it before writing queries.
+- **PRD §5's partial index predicate widened** → affects C and D → the PRD writes
+  it as `status != 'RESOLVED'`, but the frozen enum has four closed states, so the
+  index excludes `RESOLVED`, `VERIFIED`, `REJECTED` and `DUPLICATE`. Otherwise it
+  carries dead rows forever. Not an enum change, so no decision file.
 
 ## Notes for my own agent
 
 ### Day 0 state
-- Repo is empty of source. Only `.claude/` exists. A (Dev) is scaffolding Next.js
-  this session — I do **not** run `create-next-app` myself, I build on top of his.
-- Node v24.13.0 / npm 11.6.2 on this machine. Dev is on Node v22.19.0.
-- No Supabase project exists yet. Credentials are the human's job, not the agent's.
+- A (Dev) owns the Next.js scaffold and had not pushed it as of `8d4f56b`. I do
+  **not** run `create-next-app` — I build on top of his and add my deps then.
+- No Supabase project exists yet. Everything so far is verified by `tsc --strict`
+  and by reasoning against the PRD; **no migration has been run against a real
+  database.** Treat the SQL as unexecuted until it is.
+- C and D are still `UNCLAIMED`. Nobody is writing `lib/engine/**` or `app/admin/**`.
 
 ### Hard rules for my paths
 - **Never compute priority score on page load.** Vercel Cron → API route → C's
-  scorer → writes `priority_score` + `priority_breakdown`. PRD §7.
+  scorer → writes `priority_score` and `priority_breakdown`.
 - `report_count` is `count(distinct user_id)` from `incident_reporters`. Never
-  `count(*)` on reports. That join table exists purely to make inflation impossible.
-- Rate limit 10 reports/user/hour at the API layer, plus `device_fingerprint`.
-- Location is `geography(Point,4326)`, **not** two float columns. PostGIS or the
-  clustering query C needs cannot exist.
-- RLS enforced in Postgres for all four roles, not hidden in the UI. PRD §10.1.
-- Upload path is presigned URL → Supabase Storage direct from the browser. The API
-  issues the URL; the file never passes through a Next.js route.
-- Never cluster into a `RESOLVED` incident — new incident, set `previous_incident_id`.
+  `count(*)` on reports.
+- `location` is `geography(Point,4326)`, not two floats. The PRD §6 clustering
+  query cannot exist otherwise.
+- RLS enforced in Postgres, not hidden in the UI.
+- Presigned URL straight to Supabase Storage; the file never passes through a
+  Next.js route — a serverless body limit would cap photo size.
+- Never cluster into a closed incident. New incident, set `previous_incident_id`.
+- Rate limit 10 reports/user/hour, counted in the database. An in-process counter
+  on Vercel limits nothing, because invocations do not share memory.
+
+### Gotchas already hit
+- The seed `--reset` has to null `previous_incident_id` before deleting incidents;
+  the table has a self-referencing FK.
+- Seeding citizens goes through `auth.admin.createUser`, because `public.users.id`
+  is FK'd to `auth.users`. A plain insert into `public.users` fails.
+- `STATUS_TRANSITIONS` exists twice on purpose — TypeScript in
+  `lib/contracts/enums.ts`, PL/pgSQL in `0001_init.sql`. Change one and you must
+  change the other. Considered generating the SQL from the TS and rejected it:
+  one more build step for a nine-row table nobody edits.
 
 ### Danger zones
-- Do NOT import from the discarded NestJS + MongoDB `backend/` (decision 002).
-  There is no `incidents` collection there; its whole duplication model is the
-  thing the PRD forbids.
-- Do NOT touch: `app/(citizen)/**`, `app/report/**`, `app/my-reports/**`,
+- Do NOT import from the discarded NestJS + MongoDB `backend/` (decisions/002).
+  It has no `incidents` collection and its duplication model is the exact thing
+  PRD §4 forbids.
+- Do NOT touch `app/(citizen)/**`, `app/report/**`, `app/my-reports/**`,
   `app/track/**`, `lib/engine/**`, `app/admin/**`, `app/field/**`.
 - `package.json` / `next.config.js` / `tailwind.config.ts` are shared — post a
-  Heads up here before editing.
+  Heads up before editing.
