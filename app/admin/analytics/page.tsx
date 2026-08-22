@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, LineChart, Line, ComposedChart
+  BarChart, Bar, Legend, LineChart, Line, ComposedChart, Cell
 } from 'recharts';
 
 /* ── Mock Data for Analytics ──────────────────────────────────────────────── */
@@ -186,7 +186,7 @@ export default function AnalyticsDashboard() {
                 <Bar dataKey="reopenRate" name="Reopen Rate %" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={30}>
                   {
                     DEPT_PERF_DATA.map((entry, index) => (
-                      <cell key={`cell-${index}`} fill={entry.reopenRate > 10 ? '#f43f5e' : '#fb923c'} />
+                      <Cell key={`cell-${index}`} fill={entry.reopenRate > 10 ? '#f43f5e' : '#fb923c'} />
                     ))
                   }
                 </Bar>
