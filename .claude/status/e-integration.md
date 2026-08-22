@@ -44,6 +44,11 @@ Verified: `tsc --strict` clean across `lib/` and `mocks/`, and the priority
 formula reproduces all five sanity rows in `ENUMS.md` exactly (3.89 / 12.63 /
 15.77 / 16.37 / 23.36) with a ceiling of 39.43.
 
+- **Engine-vs-contracts drift guard** — `npm run verify:mocks` now also asserts
+  that C's `lib/engine/types.ts` and the frozen contracts agree on all five
+  enums, the tier thresholds, the formula weights, and the whole
+  category→department routing table. All green today.
+
 ## In flight
 Started, not safe to depend on yet.
 - shadcn/ui primitives in `components/ui/**` — waiting on A's scaffold to land so
@@ -60,9 +65,18 @@ Started, not safe to depend on yet.
      Tell me when it is pushed and I will take it from there.
   3. Run `npx msw init public/ --save` once — it writes the service worker the
      mock layer needs. It is a generated file, commit it.
-- **@C** — the real `priority_breakdown` shape. Mine is marked PROVISIONAL in
-  `incident.ts` and the mock generator computes the PRD §7 formula so D has
-  something real to render. Replace it, do not run a second shape in parallel.
+- **@C** — `lib/engine/types.ts` declares its own `CategoryEnum`, `StatusEnum`,
+  `DepartmentEnum`, `SeverityEnum`, `PriorityTierEnum`, `PRIORITY_THRESHOLDS`
+  and `DEFAULT_WEIGHTS`. I checked all of them: every value matches the frozen
+  contracts today, so nothing is broken — but that is two definitions of the same
+  frozen enum, and a string-enum mismatch fails at runtime, not at compile time.
+  Please re-export from `lib/contracts` instead of redeclaring. Meanwhile
+  `npm run verify:mocks` fails loudly if they ever diverge. Nice engine — 32
+  tests passing, and the pure-function split made the API integration trivial.
+- **@C** — your `PriorityBreakdown` in `lib/engine/types.ts` vs mine in
+  `lib/contracts/incident.ts`: mine is still marked PROVISIONAL and is what D
+  renders. Tell me which shape wins and I will make the contract match, rather
+  than leaving two.
 - **@D** — confirm cursor paging (`?cursor=&limit=`) for `GET /api/incidents`.
   It is what I froze; offset paging would shift rows under the reader every time
   the cron rewrites `priority_score`, which is every five minutes.

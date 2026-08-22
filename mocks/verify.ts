@@ -19,7 +19,27 @@ import {
   MyReportListItemSchema,
   ReportDetailSchema,
 } from '../lib/contracts/report';
-import { CATEGORIES, STATUSES, priorityTier } from '../lib/contracts/enums';
+import {
+  CATEGORIES,
+  CATEGORY_DEPARTMENT,
+  DEPARTMENTS,
+  PRIORITY_TIERS,
+  PRIORITY_TIER_THRESHOLD,
+  PRIORITY_WEIGHTS,
+  SEVERITY_SELF,
+  STATUSES,
+  priorityTier,
+} from '../lib/contracts/enums';
+import {
+  CategoryEnum,
+  DEFAULT_WEIGHTS,
+  DepartmentEnum,
+  PRIORITY_THRESHOLDS,
+  PriorityTierEnum,
+  SeverityEnum,
+  StatusEnum,
+  routeToDepartment,
+} from '../lib/engine';
 import {
   INCIDENTS,
   INCIDENT_SUMMARIES,
@@ -99,6 +119,60 @@ check('queue is ranked by score, descending', () => {
   for (let i = 1; i < INCIDENTS.length; i++) {
     if (INCIDENTS[i].priority_score > INCIDENTS[i - 1].priority_score) {
       throw new Error(`out of order at index ${i}`);
+    }
+  }
+});
+
+/* ── engine vs contracts ──────────────────────────────────────────────────── */
+// C's lib/engine/types.ts declares its own Category, Status, Department,
+// Severity and PriorityTier rather than importing lib/contracts. Today every
+// value matches. The danger is drift: a mismatched string enum fails at runtime,
+// not at compile time, so nothing would catch it until the demo. Until the
+// engine imports the contracts, this is the guard.
+console.log('\nengine enums vs frozen contracts');
+
+const sortJoin = (xs: readonly string[]) => [...xs].sort().join(',');
+
+function checkEnum(label: string, contract: readonly string[], engine: readonly string[]) {
+  check(label, () => {
+    if (sortJoin(contract) !== sortJoin(engine)) {
+      throw new Error(
+        `contracts [${sortJoin(contract)}] vs engine [${sortJoin(engine)}]`,
+      );
+    }
+  });
+}
+
+checkEnum('Category', CATEGORIES, Object.values(CategoryEnum));
+checkEnum('Status', STATUSES, Object.values(StatusEnum));
+checkEnum('Department', DEPARTMENTS, Object.values(DepartmentEnum));
+checkEnum('Severity self-report', SEVERITY_SELF, Object.values(SeverityEnum));
+checkEnum('Priority tier', PRIORITY_TIERS, Object.values(PriorityTierEnum));
+
+check('priority tier thresholds agree', () => {
+  const a = PRIORITY_TIER_THRESHOLD;
+  const b = PRIORITY_THRESHOLDS;
+  if (a.CRITICAL !== b.CRITICAL || a.HIGH !== b.HIGH || a.MEDIUM !== b.MEDIUM) {
+    throw new Error(`contracts ${JSON.stringify(a)} vs engine ${JSON.stringify(b)}`);
+  }
+});
+
+check('priority weights agree', () => {
+  const a = PRIORITY_WEIGHTS;
+  const b = DEFAULT_WEIGHTS;
+  // The engine names them w1..w4 after the PRD formula; the contracts name them
+  // after what each term measures. Same numbers, different labels.
+  if (a.severity !== b.w1 || a.reports !== b.w2 || a.age !== b.w3 || a.recurrence !== b.w4) {
+    throw new Error(`contracts ${JSON.stringify(a)} vs engine ${JSON.stringify(b)}`);
+  }
+});
+
+check('category to department routing agrees', () => {
+  for (const category of CATEGORIES) {
+    const contract = CATEGORY_DEPARTMENT[category];
+    const engine = routeToDepartment(category).department;
+    if (contract !== engine) {
+      throw new Error(`${category}: contracts -> ${contract}, engine -> ${engine}`);
     }
   }
 });

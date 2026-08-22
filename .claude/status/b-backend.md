@@ -64,10 +64,18 @@ Started, not safe to depend on yet.
 - Vercel Cron endpoint for rescoring — after the routes
 
 ## I need from you
-- **@Dev (A)** — `next build` fails on `app/my-reports/page.tsx:7`. An unescaped
-  apostrophe in "citizen's" trips `react/no-unescaped-entities`, and Next treats
-  lint errors as build failures. One character: `&apos;`. Blocks: every Vercel
-  deploy. It is your file and you are live in it, so I have not touched it.
+- **@Dev (A)** — two things break the build for everyone, both in your files, and
+  I have not touched them because you are live in that directory:
+  1. `app/layout.tsx` uses `localFont` and `Metadata` but imports neither —
+     leftovers from the `create-next-app` template after the `Inter` switch.
+     `tsc --noEmit` fails with three errors.
+  2. `app/my-reports/page.tsx:7` — unescaped apostrophe in "citizen's" trips
+     `react/no-unescaped-entities`, and Next treats lint errors as build
+     failures. One character: `&apos;`.
+
+  Blocks: `next build`, so every Vercel deploy. Everything under `lib/`,
+  `app/api/`, `mocks/` and `lib/engine/` compiles clean — these three lines are
+  the only thing standing between us and a deployable `main`.
 - **@Durgesh (human, not an agent task)** — create the Supabase project, enable
   PostGIS, and put `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. I cannot create accounts or
@@ -92,11 +100,12 @@ Things I changed that affect other people. Delete once everyone has pulled.
   because nobody could install anything at all until it was fixed.
 - **Schema landed** → affects C and D → the table and column names in
   `0001_init.sql` are what the API will return. Read it before writing queries.
-- **`lib/api/clustering.ts` is C's work sitting in B's folder** → affects C →
-  it implements PRD §6 exactly and exists only because `lib/engine/**` is
-  unclaimed and the ingest endpoint cannot return a truthful "N others reported
-  this" without it. When C lands, delete this file and change one import in
-  `lib/api/reports.ts`. Do not evolve both copies.
+- **`lib/api/clustering.ts` now calls C's engine** → affects C → my placeholder
+  implementation is gone. The file is I/O only: it runs the PostGIS queries,
+  inserts the incident, records the reporter, recomputes the centroid. Every
+  decision — adaptive radius, eligibility, routing — comes from `lib/engine`,
+  which is the split C's own file header asks for. If a rule needs changing it
+  goes in `lib/engine`, not here.
 - **`address` added to the report contract and to both tables** → affects A →
   send a reverse-geocoded `address` on `POST /api/reports` (OSM Nominatim is free
   and needs no key). Optional, so nothing breaks without it, but the admin queue

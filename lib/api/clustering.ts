@@ -1,26 +1,32 @@
 /**
- * Interim clustering — B's placeholder for C's engine.
+ * Clustering I/O — the database half of PRD §6.
  *
- * ⚠ This belongs to workstream C. It lives here only because `lib/engine/**` is
- * unclaimed and the ingest endpoint cannot return a truthful "N others reported
- * this" without it. When C lands `lib/engine`, this file is deleted and
- * `clusterReport` is imported from there — the signature below is the seam, so
- * the swap is a one-line import change in reports.ts. Do not evolve both.
+ * Owner: B (backend). The *decisions* belong to C and live in `lib/engine`:
+ * what the adaptive radius is, whether a candidate is eligible, which department
+ * a category routes to. This file does the parts an engine of pure functions
+ * cannot: run the PostGIS queries, insert the incident, record the reporter,
+ * recompute the centroid.
  *
- * Implements PRD §6 exactly:
+ * That split is C's own design — `lib/engine/clustering.ts` says the spatial
+ * queries are abstracted out and belong to B. Nothing here re-decides anything
+ * the engine already decides; if you find yourself adding a rule, it goes in
+ * `lib/engine` instead.
+ *
  *   1. r = incoming report
- *   2. R = 35 + r.gps_accuracy_m
- *   3. nearest open incident, same category, within R
- *   4. match  → join, record the reporter, recompute the centroid
- *   5. else   → new incident, linked to any previously closed one at this spot
- *   6. enqueue for rescoring (the cron picks it up; nothing is scored here)
+ *   2. R = computeAdaptiveRadius(r.gps_accuracy_m)          ← engine
+ *   3. candidates within R, same category, nearest first    ← here (PostGIS)
+ *   4. makeClusteringDecision(category, candidates)         ← engine
+ *   5. attach, or seed a new incident linked to any prior failure at this spot
+ *   6. the rescoring cron picks it up; nothing is scored on this path
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  CATEGORY_DEPARTMENT,
-  CLUSTER_BASE_RADIUS_M,
-  type Category,
-} from '../contracts/enums';
+  computeAdaptiveRadius,
+  makeClusteringDecision,
+  routeToDepartment,
+  type ClusterCandidate,
+} from '../engine';
+import type { Category } from '../contracts/enums';
 import type { GeoPoint } from '../contracts/common';
 
 export type ClusterInput = {
@@ -39,6 +45,14 @@ export type ClusterResult = {
   reportCount: number;
 };
 
+/** Shape of the find_nearby_open_incident RPC result. */
+type NearbyRow = {
+  incident_id: string;
+  distance_m: number;
+  status: ClusterCandidate['status'];
+  report_count: number;
+};
+
 /**
  * Runs inside the ingest request rather than on a queue.
  *
@@ -53,8 +67,12 @@ export async function clusterReport(
   db: SupabaseClient,
   input: ClusterInput,
 ): Promise<ClusterResult> {
-  const radius = CLUSTER_BASE_RADIUS_M + input.gpsAccuracyM;
+  const radius = computeAdaptiveRadius(input.gpsAccuracyM);
 
+  // The SQL function already filters to open incidents of the same category and
+  // orders by distance. The engine re-checks eligibility anyway — it is the
+  // authority on the rule, and a query that quietly changes should not be able
+  // to widen it.
   const { data: nearby, error: nearbyErr } = await db.rpc('find_nearby_open_incident', {
     p_category: input.category,
     p_lat: input.location.lat,
@@ -63,10 +81,27 @@ export async function clusterReport(
   });
   if (nearbyErr) throw new Error(`clustering lookup failed: ${nearbyErr.message}`);
 
-  let incidentId: string | undefined = nearby?.[0]?.incident_id;
-  const clustered = Boolean(incidentId);
+  // The RPC is a set-returning function, but supabase-js has no generated types
+  // for it, so its result arrives untyped. NearbyRow is the contract with
+  // find_nearby_open_incident in 0003_spatial_functions.sql.
+  const rows = (nearby ?? []) as NearbyRow[];
 
-  if (!incidentId) {
+  const candidates: ClusterCandidate[] = rows.map((row) => ({
+    incidentId: row.incident_id,
+    category: input.category,
+    status: row.status,
+    centroid: input.location,
+    distanceM: row.distance_m,
+  }));
+
+  const decision = makeClusteringDecision(input.category, candidates);
+  const clustered = decision.action === 'attach';
+
+  let incidentId: string;
+
+  if (clustered && decision.incidentId) {
+    incidentId = decision.incidentId;
+  } else {
     // Nothing open nearby. Before seeding, check whether this exact spot has
     // failed before — that link is the entire recurrence-chain feature, and it
     // can only be established at creation time. A wider radius on purpose: a
@@ -84,6 +119,9 @@ export async function clusterReport(
       p_lng: input.location.lng,
     });
 
+    // Routing layer 1 (PRD §8), decided by the engine. Null means triage.
+    const routing = routeToDepartment(input.category);
+
     const { data: created, error: createErr } = await db
       .from('incidents')
       .insert({
@@ -91,17 +129,16 @@ export async function clusterReport(
         centroid: `POINT(${input.location.lng} ${input.location.lat})`,
         address: input.address ?? null,
         ward_id: ward ?? null,
-        // Routing layer 1: deterministic lookup. Null means the triage queue.
-        department: CATEGORY_DEPARTMENT[input.category],
+        department: routing.department,
         status: 'SUBMITTED',
         previous_incident_id: previous ?? null,
       })
       .select('id')
-      .single();
+      .single<{ id: string }>();
     if (createErr || !created?.id) {
       throw new Error(`incident insert failed: ${createErr?.message ?? 'no row returned'}`);
     }
-    incidentId = created.id as string;
+    incidentId = created.id;
   }
 
   // Unique-user counting. The composite primary key makes a repeat submission
@@ -118,7 +155,9 @@ export async function clusterReport(
   if (clustered) {
     // The centroid is the mean of member reports, so it drifts toward where
     // people are actually standing rather than staying pinned to whoever
-    // happened to report first.
+    // happened to report first. Done in SQL because the member locations are
+    // already there; the engine's recomputeCentroid is for the pure-function
+    // path and unit tests.
     await db.rpc('recompute_centroid', { p_incident_id: incidentId });
   }
 
@@ -129,12 +168,8 @@ export async function clusterReport(
     .from('incidents')
     .select('report_count')
     .eq('id', incidentId)
-    .single();
+    .single<{ report_count: number }>();
   if (readErr) throw new Error(`report count read failed: ${readErr.message}`);
 
-  return {
-    incidentId,
-    clustered,
-    reportCount: incident.report_count as number,
-  };
+  return { incidentId, clustered, reportCount: incident.report_count };
 }
