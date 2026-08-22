@@ -27,7 +27,7 @@ export function ReportProvider({ children }: { children: React.ReactNode }) {
     setData((prev) => ({ ...prev, ...updates }));
   };
 
-  const nextStep = () => setCurrentStep((s) => Math.min(s + 1, 5));
+  const nextStep = () => setCurrentStep((s) => Math.min(s + 1, 6));
   const prevStep = () => setCurrentStep((s) => Math.max(s - 1, 1));
   const setStep = (step: number) => setCurrentStep(step);
 

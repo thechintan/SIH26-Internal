@@ -37,6 +37,7 @@ export default function Step5Review() {
         photo_url: storagePath,
         location: data.location!,
         gps_accuracy_m: data.gps_accuracy_m || 50, // default if missing
+        address: data.address,
         description: data.description,
         severity_self: data.severity_self || 'MODERATE',
         device_fingerprint: 'demo-fingerprint-1234', // Simple mock fingerprint

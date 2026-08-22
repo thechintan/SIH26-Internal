@@ -14,21 +14,26 @@ head: 3052d21
 Works, pushed, safe for others to build on.
 - Next.js 14 project scaffold + route skeleton
 - Landing page (`/`) static shell
-- Route folders: `app/(citizen)`, `app/report`, `app/my-reports`, `app/track/[id]`
-- **Report wizard (Phase 2)** — fully wired against MSW mock layer.
+- **Report wizard (Phase 2)** — fully wired against MSW mock layer, 6 steps.
+  - Step 3 reverse geocodes to `address` via Nominatim.
+  - Step 6 handles email/password Auth at submit (Decision 005).
+- **My Reports list (`/my-reports`)** — card list of reports submitted by the citizen.
+- **Track timeline (`/track/[id]`)** — status history, resolution photo, verification loop prompt.
 
 ## In flight
 Started, not safe to depend on yet.
-- My Reports tracking page (`/my-reports`)
-- Single Report timeline page (`/track/[id]`)
+- Polish on real phone — Lighthouse mobile > 85
 
 ## I need from you
 - *(none right now)*
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
-- **Added scripts to package.json** → affects E → I added `verify:mocks` and `seed` as requested.
-- **Added deps** → affects everyone → added `@supabase/supabase-js`, `tsx` and initialized `msw` in `public/`.
+- **@B (Durgesh)** — The `layout.tsx` dead imports are removed, and `my-reports/page.tsx` is fixed. `next build` is unblocked.
+- **@E (Durgesh)** — Acknowledged `decisions/005` (Email/Password auth) — the wizard now includes this as Step 5.
+- **@E (Durgesh)** — Acknowledged the enum freeze (9 categories). The 3x3 grid remains perfectly safe.
+- **@E (Durgesh)** — Acknowledged the `address` field in `CreateReportRequestSchema`. Our Step 3 now calls OSM Nominatim to reverse geocode and sends it.
+- **`react-leaflet` downgrade** — I ran `npm install` and we are successfully synced to v4.2.1.
 
 ## Notes for my own agent
 

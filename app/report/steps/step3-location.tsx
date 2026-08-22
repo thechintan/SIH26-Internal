@@ -20,10 +20,33 @@ export default function Step3Location() {
   const { data, updateData, nextStep, prevStep } = useReportWizard();
   const [isLocating, setIsLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [address, setAddress] = useState<string>(data.address || '');
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   const [location, setLocation] = useState<GeoPoint>(
     data.location || { lat: 28.6139, lng: 77.2090 } // Default to New Delhi if no location
   );
+
+  // Reverse geocode using OSM Nominatim (free, no key needed)
+  const reverseGeocode = async (lat: number, lng: number) => {
+    setIsGeocoding(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        const addr = json.display_name || '';
+        setAddress(addr);
+        updateData({ address: addr });
+      }
+    } catch (e) {
+      console.warn('Reverse geocode failed:', e);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
 
   useEffect(() => {
     // If we don't have a location yet, try to get it immediately
@@ -49,6 +72,7 @@ export default function Step3Location() {
           location: newLoc,
           gps_accuracy_m: Math.round(position.coords.accuracy),
         });
+        reverseGeocode(newLoc.lat, newLoc.lng);
         setIsLocating(false);
       },
       (err) => {
@@ -61,8 +85,11 @@ export default function Step3Location() {
   };
 
   const handleNext = () => {
-    // Ensure we have it saved in context
-    updateData({ location });
+    updateData({ location, address });
+    // Fire and forget reverse geocode if we haven't done it yet
+    if (!address) {
+      reverseGeocode(location.lat, location.lng);
+    }
     nextStep();
   };
 
@@ -87,6 +114,14 @@ export default function Step3Location() {
 
       {error && (
         <p className="text-xs text-red-500 text-center">{error}</p>
+      )}
+      {address && (
+        <p className="text-xs text-gray-600 text-center truncate px-2">
+          📍 {address}
+        </p>
+      )}
+      {isGeocoding && (
+        <p className="text-xs text-gray-400 text-center">Looking up address...</p>
       )}
       {data.gps_accuracy_m && (
         <p className="text-xs text-green-600 text-center font-medium">
