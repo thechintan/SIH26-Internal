@@ -18,15 +18,15 @@ Works, pushed, safe for others to build on.
 
 ## In flight
 Started, not safe to depend on yet.
+- Report wizard Steps 1-5 (building against MSW mocks) — expect by next sync
 
 ## I need from you
-- **@E** — Zod contracts in `lib/contracts/` for `POST /api/reports` and `GET /api/my-reports`. Blocks: Step 5 of the report wizard (can't validate submission shape without them). Also need MSW mocks wired for both endpoints so I can develop offline.
-- **@E** — Team decision on the 3 open enum questions from `decisions/003`: (1) Add `STRAY_ANIMAL` category? (2) Voice notes on reports? (3) Severity self-report fed to scorer? My Step 2 tile grid layout depends on the final category count (3×3 only works for exactly 9).
 - **@B** — Presigned upload URL endpoint shape — needed for Step 5 upload progress bar. Will work against MSW mock until real endpoint lands.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
-- *(none yet)*
+- **Added scripts to package.json** → affects E → I added `verify:mocks` and `seed` as requested.
+- **Added deps** → affects everyone → added `@supabase/supabase-js`, `tsx` and initialized `msw` in `public/`.
 
 ## Notes for my own agent
 
