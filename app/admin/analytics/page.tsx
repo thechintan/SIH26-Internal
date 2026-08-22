@@ -50,13 +50,17 @@ const CustomTooltip = ({
 }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-[#111827]/90 backdrop-blur-md border border-white/[0.08] p-3 rounded-lg shadow-xl text-xs">
-        <div className="font-semibold text-slate-200 mb-2">{label}</div>
+      <div style={{
+        background: 'var(--admin-bg-elevated)', border: '1px solid var(--admin-border)',
+        padding: '12px', borderRadius: '8px', boxShadow: 'var(--admin-shadow-elevated)',
+        fontSize: '12px'
+      }}>
+        <div style={{ fontWeight: 600, color: 'var(--admin-text-primary)', marginBottom: '8px' }}>{label}</div>
         {payload.map((entry: TooltipEntry, i: number) => (
-          <div key={i} className="flex items-center gap-2 text-slate-300 py-0.5">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span>{entry.name}:</span>
-            <span className="font-mono text-white">{entry.value}</span>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 0' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: entry.color }} />
+            <span style={{ color: 'var(--admin-text-secondary)' }}>{entry.name}:</span>
+            <span style={{ fontFamily: 'monospace', color: 'var(--admin-text-primary)' }}>{entry.value}</span>
           </div>
         ))}
       </div>
@@ -69,20 +73,20 @@ const CustomTooltip = ({
 
 export default function AnalyticsDashboard() {
   return (
-    <div className="p-4 lg:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', background: 'var(--admin-bg-base)', minHeight: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="text-xl font-bold text-white">Platform Analytics</h1>
-          <p className="text-xs text-slate-400 mt-1">Live operational metrics and historical trends</p>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--admin-text-primary)' }}>Platform Analytics</h1>
+          <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', marginTop: '4px' }}>Live operational metrics and historical trends</p>
         </div>
         
-        <div className="flex gap-2">
-          <select className="bg-[#111827] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500/40">
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <select style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', color: 'var(--admin-text-primary)', outline: 'none' }}>
             <option>Last 14 days</option>
             <option>Last 30 days</option>
             <option>This Quarter</option>
           </select>
-          <select className="bg-[#111827] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500/40">
+          <select style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', color: 'var(--admin-text-primary)', outline: 'none' }}>
             <option>All Departments</option>
             <option>Public Works</option>
             <option>Sanitation</option>
@@ -92,103 +96,103 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
         
         {/* Incident Volume Trend */}
-        <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-200">Incident Volume Trend</h3>
-            <p className="text-[10px] text-slate-500">Submitted vs Resolved per day</p>
+        <div style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '12px', padding: '20px', boxShadow: 'var(--admin-shadow-card)' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text-primary)' }}>Incident Volume Trend</h3>
+            <p style={{ fontSize: '11px', color: 'var(--admin-text-muted)' }}>Submitted vs Resolved per day</p>
           </div>
-          <div className="h-72 w-full">
+          <div style={{ height: '280px', width: '100%' }}>
             <ResponsiveContainer>
               <AreaChart data={VOLUME_TREND_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorSub" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="var(--color-semantic-info)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-semantic-info)" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorRes" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="var(--color-semantic-success)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--color-semantic-success)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--admin-border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', color: '#94a3b8' }} />
-                <Area type="monotone" dataKey="submitted" name="New Incidents" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorSub)" />
-                <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRes)" />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', color: 'var(--admin-text-muted)' }} />
+                <Area type="monotone" dataKey="submitted" name="New Incidents" stroke="var(--color-semantic-info)" strokeWidth={2} fillOpacity={1} fill="url(#colorSub)" />
+                <Area type="monotone" dataKey="resolved" name="Resolved" stroke="var(--color-semantic-success)" strokeWidth={2} fillOpacity={1} fill="url(#colorRes)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Department Performance */}
-        <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-200">Resolution Speed by Department</h3>
-            <p className="text-[10px] text-slate-500">Average time to resolve (hours)</p>
+        <div style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '12px', padding: '20px', boxShadow: 'var(--admin-shadow-card)' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text-primary)' }}>Resolution Speed by Department</h3>
+            <p style={{ fontSize: '11px', color: 'var(--admin-text-muted)' }}>Average time to resolve (hours)</p>
           </div>
-          <div className="h-72 w-full">
+          <div style={{ height: '280px', width: '100%' }}>
             <ResponsiveContainer>
               <BarChart data={DEPT_PERF_DATA} layout="vertical" margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
-                <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-                <Bar dataKey="resolveHours" name="Resolution Time (hrs)" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={24} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--admin-border)" horizontal={false} />
+                <XAxis type="number" stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis dataKey="name" type="category" stroke="var(--admin-text-secondary)" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--admin-bg-hover)' }} />
+                <Bar dataKey="resolveHours" name="Resolution Time (hrs)" fill="var(--color-semantic-brand)" radius={[0, 4, 4, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* SLA Compliance */}
-        <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-200">SLA Compliance by Priority</h3>
-            <p className="text-[10px] text-slate-500">Percentage of incidents resolved within SLA</p>
+        <div style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '12px', padding: '20px', boxShadow: 'var(--admin-shadow-card)' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text-primary)' }}>SLA Compliance by Priority</h3>
+            <p style={{ fontSize: '11px', color: 'var(--admin-text-muted)' }}>Percentage of incidents resolved within SLA</p>
           </div>
-          <div className="h-72 w-full">
+          <div style={{ height: '280px', width: '100%' }}>
             <ResponsiveContainer>
               <ComposedChart data={SLA_COMPLIANCE_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--admin-border)" vertical={false} />
+                <XAxis dataKey="name" stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="compliance" name="Actual Compliance %" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={40} />
-                <Line type="step" dataKey="target" name="Target SLA %" stroke="#f43f5e" strokeWidth={2} dot={false} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', color: 'var(--admin-text-muted)' }} />
+                <Bar dataKey="compliance" name="Actual Compliance %" fill="var(--color-semantic-info)" radius={[4, 4, 0, 0]} barSize={40} />
+                <Line type="step" dataKey="target" name="Target SLA %" stroke="var(--color-semantic-danger)" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Quality Signal: Reopen Rate */}
-        <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5">
-          <div className="mb-4 flex items-center justify-between">
+        <div style={{ background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', borderRadius: '12px', padding: '20px', boxShadow: 'var(--admin-shadow-card)' }}>
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <h3 className="text-sm font-semibold text-slate-200">Quality Signal: Reopen Rate</h3>
-              <p className="text-[10px] text-slate-500">Incidents reopened by citizens after being marked fixed</p>
+              <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text-primary)' }}>Quality Signal: Reopen Rate</h3>
+              <p style={{ fontSize: '11px', color: 'var(--admin-text-muted)' }}>Incidents reopened by citizens after being marked fixed</p>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-rose-400 font-bold bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '11px', color: 'var(--color-semantic-danger)', fontWeight: 700, background: 'var(--bg-semantic-danger)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--color-semantic-danger)' }}>
                 ⚠ Water & Drain &gt; 10%
               </div>
             </div>
           </div>
-          <div className="h-72 w-full">
+          <div style={{ height: '280px', width: '100%' }}>
             <ResponsiveContainer>
               <BarChart data={DEPT_PERF_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-                <Bar dataKey="reopenRate" name="Reopen Rate %" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={30}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--admin-border)" vertical={false} />
+                <XAxis dataKey="name" stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--admin-text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--admin-bg-hover)' }} />
+                <Bar dataKey="reopenRate" name="Reopen Rate %" fill="var(--color-semantic-warning)" radius={[4, 4, 0, 0]} barSize={30}>
                   {
                     DEPT_PERF_DATA.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.reopenRate > 10 ? '#f43f5e' : '#fb923c'} />
+                      <Cell key={`cell-${index}`} fill={entry.reopenRate > 10 ? 'var(--color-semantic-danger)' : 'var(--color-semantic-warning)'} />
                     ))
                   }
                 </Bar>

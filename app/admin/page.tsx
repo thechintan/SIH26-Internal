@@ -3,388 +3,281 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTheme } from './_lib/theme-context';
 import {
-  CATEGORIES,
-  CATEGORY_LABEL,
-  DEPARTMENTS,
-  DEPARTMENT_LABEL,
-  STATUSES,
-  PRIORITY_TIERS,
-  type Department,
-  type Status,
-  type PriorityTier,
+  CATEGORIES, CATEGORY_LABEL,
+  DEPARTMENTS, DEPARTMENT_LABEL,
+  STATUSES, PRIORITY_TIERS,
+  type Department, type Status, type PriorityTier,
 } from '../../lib/contracts/enums';
 import type { IncidentSummary } from '../../lib/contracts/incident';
 import { TIER_COLORS, STATUS_COLORS, CATEGORY_ICONS } from './_lib/constants';
 import Map from './_components/Map';
-
-/* ── Hardcoded mock data (from mocks/fixtures.ts shape) ───────────────────── */
-/* Using inline data until MSW browser integration is wired. All shapes match
-   the frozen IncidentSummarySchema from lib/contracts/incident.ts. */
-
 import { INCIDENT_SUMMARIES } from '../../mocks/fixtures';
 
-/* ── KPI card ─────────────────────────────────────────────────────────────── */
+/* ── KPI Card ─────────────────────────────────────────────────────────────── */
 
-function KPICard({ label, value, accent }: { label: string; value: string | number; accent: string }) {
+function KPICard({ label, value, color, icon }: {
+  label: string; value: string | number; color: string; icon: string;
+}) {
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-4 backdrop-blur-sm">
-      <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
-      <div className={`text-2xl font-bold tracking-tight ${accent}`}>{value}</div>
+    <div style={{
+      background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)',
+      borderRadius: 12, padding: '16px 18px',
+      boxShadow: 'var(--admin-shadow-card)',
+      transition: 'all 0.25s ease',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {/* Accent bar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color, opacity: 0.9 }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--admin-text-secondary)' }}>{label}</div>
+        <span style={{ fontSize: 20 }}>{icon}</span>
+      </div>
+      <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em', color }}>{value}</div>
     </div>
   );
 }
 
-/* ── Priority badge ───────────────────────────────────────────────────────── */
+/* ── Priority/Status badges ──────────────────────────────────────────────── */
 
 function PriorityBadge({ tier, score }: { tier: PriorityTier; score: number }) {
   const c = TIER_COLORS[tier];
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text} ${c.border} border`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 9999,
+      fontSize: 12, fontWeight: 600,
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.text }} />
       {score.toFixed(1)}
     </span>
   );
 }
 
-/* ── Status badge ─────────────────────────────────────────────────────────── */
-
 function StatusBadge({ status }: { status: Status }) {
+  const c = STATUS_COLORS[status] ?? { bg: 'var(--admin-bg-active)', text: 'var(--admin-text-secondary)', border: 'var(--admin-border)' };
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${STATUS_COLORS[status] ?? 'bg-slate-500/15 text-slate-400'}`}>
+    <span style={{
+      display: 'inline-flex', padding: '2px 10px', borderRadius: 9999,
+      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`
+    }}>
       {status.replace('_', ' ')}
     </span>
   );
 }
 
-/* ── Tabs for mobile (Queue / Map) ────────────────────────────────────────── */
-
-type ViewTab = 'queue' | 'map';
-
-/* ── Filter bar ───────────────────────────────────────────────────────────── */
-
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-wider text-slate-500">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-[#111827] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500/40 appearance-none cursor-pointer"
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-/* ── Sort options (PRD §10.3) ─────────────────────────────────────────────── */
+/* ── Sort options ─────────────────────────────────────────────────────────── */
 
 const SORT_OPTIONS = [
-  { value: 'priority', label: 'Priority' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
+  { value: 'priority', label: 'Priority Score' },
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
   { value: 'most_reported', label: 'Most Reported' },
-] as const;
+];
 
-/* ── Command Center page ──────────────────────────────────────────────────── */
+/* ── Command Center Page ──────────────────────────────────────────────────── */
 
 export default function AdminCommandCenter() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<ViewTab>('queue');
+  const { isDark } = useTheme();
+
+  const [activeTab, setActiveTab] = useState<'queue' | 'map'>('queue');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterDept, setFilterDept] = useState('');
-  const [filterTier, setFilterTier] = useState('');
-  const [sort, setSort] = useState('priority');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [filterStatus, setFilterStatus]     = useState('');
+  const [filterDept, setFilterDept]         = useState('');
+  const [filterTier, setFilterTier]         = useState('');
+  const [sort, setSort]                     = useState('priority');
+  const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
 
-  /* ── Compute filtered + sorted incidents ──────────────────────────── */
-
+  /* Filtered + sorted rows */
   const incidents = useMemo(() => {
-    let rows: IncidentSummary[] = [...INCIDENT_SUMMARIES];
-
-    if (filterCategory) rows = rows.filter((r) => r.category === filterCategory);
-    if (filterStatus)   rows = rows.filter((r) => r.status === filterStatus);
-    if (filterDept)     rows = rows.filter((r) => r.department === filterDept);
-    if (filterTier)     rows = rows.filter((r) => r.priority_tier === filterTier);
-
+    let rows = [...INCIDENT_SUMMARIES] as IncidentSummary[];
+    if (filterCategory) rows = rows.filter(r => r.category === filterCategory);
+    if (filterStatus)   rows = rows.filter(r => r.status === filterStatus);
+    if (filterDept)     rows = rows.filter(r => r.department === filterDept);
+    if (filterTier)     rows = rows.filter(r => r.priority_tier === filterTier);
     const sorters: Record<string, (a: IncidentSummary, b: IncidentSummary) => number> = {
       priority:      (a, b) => b.priority_score - a.priority_score,
       newest:        (a, b) => Date.parse(b.first_reported_at) - Date.parse(a.first_reported_at),
       oldest:        (a, b) => Date.parse(a.first_reported_at) - Date.parse(b.first_reported_at),
       most_reported: (a, b) => b.report_count - a.report_count,
     };
-    rows.sort(sorters[sort] ?? sorters.priority);
-
-    return rows;
+    return rows.sort(sorters[sort] ?? sorters.priority);
   }, [filterCategory, filterStatus, filterDept, filterTier, sort]);
 
-  /* ── KPI computations ─────────────────────────────────────────────── */
+  /* KPI stats */
+  const all = INCIDENT_SUMMARIES;
+  const openCount    = all.filter(i => !['RESOLVED','VERIFIED','REJECTED','DUPLICATE'].includes(i.status)).length;
+  const unassigned   = all.filter(i => ['SUBMITTED','ACKNOWLEDGED'].includes(i.status)).length;
+  const resolved     = all.filter(i => i.status === 'RESOLVED').length;
+  const avgAge       = all.length ? (all.reduce((s, i) => s + i.age_days, 0) / all.length).toFixed(1) : '0';
 
-  const allIncidents = INCIDENT_SUMMARIES;
-  const openCount = allIncidents.filter((i) =>
-    !['RESOLVED', 'VERIFIED', 'REJECTED', 'DUPLICATE'].includes(i.status)
-  ).length;
-  const unassignedCount = allIncidents.filter((i) =>
-    ['SUBMITTED', 'ACKNOWLEDGED'].includes(i.status)
-  ).length;
-  const resolvedThisWeek = allIncidents.filter((i) => i.status === 'RESOLVED').length;
-  const avgAge = allIncidents.length > 0
-    ? (allIncidents.reduce((s, i) => s + i.age_days, 0) / allIncidents.length).toFixed(1)
-    : '0';
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const toggleAll = () => setSelectedIds(
+    selectedIds.size === incidents.length ? new Set() : new Set(incidents.map(i => i.incident_id))
+  );
 
-  /* ── Toggle selection ─────────────────────────────────────────────── */
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === incidents.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(incidents.map((i) => i.incident_id)));
-    }
-  };
+  const sel = { background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)', borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--admin-text-primary)', outline: 'none', cursor: 'pointer', appearance: 'none' as const };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* ── Top KPI strip ───────────────────────────────────────────── */}
-      <div className="px-4 lg:px-6 py-4 border-b border-white/[0.06] bg-[#0d1224]/50">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KPICard label="Open Incidents" value={openCount} accent="text-blue-400" />
-          <KPICard label="Unassigned" value={unassignedCount} accent="text-amber-400" />
-          <KPICard label="Resolved this week" value={resolvedThisWeek} accent="text-emerald-400" />
-          <KPICard label="Avg Age (days)" value={avgAge} accent="text-violet-400" />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--admin-bg-base)' }}>
+
+      {/* ── KPI strip ── */}
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--admin-border)', background: 'var(--admin-bg-surface)', flexShrink: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+          <KPICard label="Open Incidents"     value={openCount}  color="var(--color-semantic-info)" icon="🚨" />
+          <KPICard label="Unassigned"          value={unassigned} color="var(--color-semantic-warning)" icon="⏳" />
+          <KPICard label="Resolved This Week" value={resolved}   color="var(--color-semantic-success)" icon="✅" />
+          <KPICard label="Avg Age (Days)"     value={avgAge}     color="var(--color-semantic-brand)" icon="📅" />
         </div>
       </div>
 
-      {/* ── Mobile tabs ─────────────────────────────────────────────── */}
-      <div className="lg:hidden flex border-b border-white/[0.06]">
-        {(['queue', 'map'] as ViewTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-sm font-medium capitalize transition-colors ${
-              activeTab === tab
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
+      {/* ── Mobile tabs ── */}
+      <div className="lg:hidden" style={{ display: 'flex', borderBottom: '1px solid var(--admin-border)', flexShrink: 0, background: 'var(--admin-bg-surface)' }}>
+        {(['queue', 'map'] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            flex: 1, padding: '11px', fontSize: 13, fontWeight: 600,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: activeTab === tab ? 'var(--color-semantic-info)' : 'var(--admin-text-secondary)',
+            borderBottom: activeTab === tab ? `2.5px solid var(--color-semantic-info)` : '2.5px solid transparent',
+          }}>
             {tab === 'queue' ? '📋 Queue' : '🗺️ Map'}
           </button>
         ))}
       </div>
 
-      {/* ── Split view (desktop) / Tabs (mobile) ────────────────────── */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* ── Split view ── */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-        {/* ── Left panel: Queue ──────────────────────────────────────── */}
-        <div className={`
-          ${activeTab === 'queue' ? 'flex' : 'hidden'}
-          lg:flex flex-col flex-1 lg:w-[40%] lg:flex-none
-          border-r border-white/[0.06] overflow-hidden
-        `}>
-          {/* Filters */}
-          <div className="px-4 py-3 border-b border-white/[0.06] space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-300">
-                Incident Queue
-                <span className="ml-2 text-xs text-slate-500 font-normal">
-                  {incidents.length} result{incidents.length !== 1 ? 's' : ''}
+        {/* ─── Queue panel ─── */}
+        <div style={{
+          width: 420, flexShrink: 0, display: 'flex', flexDirection: 'column',
+          borderRight: '1px solid var(--admin-border)',
+          overflow: 'hidden', background: 'var(--admin-bg-surface)',
+        }} className={activeTab === 'queue' ? 'flex' : 'hidden lg:flex'}>
+
+          {/* Filters header */}
+          <div style={{ padding: '16px', borderBottom: '1px solid var(--admin-border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-text-primary)' }}>Incident Queue</span>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-semantic-info)', border: '1px solid var(--color-semantic-info)', color: 'var(--color-semantic-info)' }}>
+                  {incidents.length}
                 </span>
-              </h2>
-              {selectedIds.size > 0 && (
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-blue-400 font-medium">
-                    {selectedIds.size} selected
-                  </span>
-                  <div className="h-4 w-px bg-white/[0.1]"></div>
-                  <button className="text-[10px] px-2 py-1 rounded bg-white/[0.04] text-slate-300 border border-white/[0.06] hover:bg-white/[0.08] transition-colors">
-                    Assign
-                  </button>
-                  <button className="text-[10px] px-2 py-1 rounded bg-white/[0.04] text-slate-300 border border-white/[0.06] hover:bg-white/[0.08] transition-colors">
-                    Change Status
-                  </button>
-                  <button className="text-[10px] px-2 py-1 rounded bg-white/[0.04] text-slate-300 border border-white/[0.06] hover:bg-white/[0.08] transition-colors">
-                    Merge
-                  </button>
-                </div>
-              )}
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <FilterSelect
-                label="Category"
-                value={filterCategory}
-                onChange={setFilterCategory}
-                options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
-              />
-              <FilterSelect
-                label="Status"
-                value={filterStatus}
-                onChange={setFilterStatus}
-                options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
-              />
-              <FilterSelect
-                label="Department"
-                value={filterDept}
-                onChange={setFilterDept}
-                options={DEPARTMENTS.map((d) => ({ value: d, label: DEPARTMENT_LABEL[d] }))}
-              />
-              <FilterSelect
-                label="Priority"
-                value={filterTier}
-                onChange={setFilterTier}
-                options={PRIORITY_TIERS.map((t) => ({ value: t, label: t }))}
-              />
-              <FilterSelect
-                label="Sort by"
-                value={sort}
-                onChange={setSort}
-                options={SORT_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
-              />
+            {/* Filter dropdowns */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[
+                { label: 'Category', val: filterCategory, set: setFilterCategory, opts: CATEGORIES.map(c => ({ v: c, l: CATEGORY_LABEL[c] })) },
+                { label: 'Status',   val: filterStatus,   set: setFilterStatus,   opts: STATUSES.map(s => ({ v: s, l: s.replace('_',' ') })) },
+                { label: 'Dept',     val: filterDept,     set: setFilterDept,     opts: DEPARTMENTS.map(d => ({ v: d, l: DEPARTMENT_LABEL[d] })) },
+                { label: 'Priority', val: filterTier,     set: setFilterTier,     opts: PRIORITY_TIERS.map(t => ({ v: t, l: t })) },
+                { label: 'Sort',     val: sort,           set: setSort,           opts: SORT_OPTIONS.map(s => ({ v: s.value, l: s.label })) },
+              ].map(({ label, val, set, opts }) => (
+                <div key={label}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--admin-text-muted)', marginBottom: 4 }}>{label}</div>
+                  <select value={val} onChange={e => set(e.target.value)} style={sel}>
+                    <option value="">All</option>
+                    {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Queue list */}
-          <div className="flex-1 overflow-y-auto">
-            {/* Select-all row */}
-            <div className="px-4 py-2 border-b border-white/[0.04] flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={selectedIds.size === incidents.length && incidents.length > 0}
-                onChange={toggleSelectAll}
-                className="w-3.5 h-3.5 rounded bg-[#111827] border-white/10 accent-blue-500"
-              />
-              <span className="text-[10px] uppercase tracking-wider text-slate-500">Select All</span>
-            </div>
-
-            {incidents.map((inc) => (
-              <Link
-                key={inc.incident_id}
-                href={`/admin/incidents/${inc.incident_id}`}
-                className={`
-                  block px-4 py-3 border-b border-white/[0.04]
-                  hover:bg-white/[0.02] transition-colors cursor-pointer
-                  ${selectedIds.has(inc.incident_id) ? 'bg-blue-500/5' : ''}
-                `}
+          {/* List */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {incidents.map(inc => (
+              <Link key={inc.incident_id} href={`/admin/incidents/${inc.incident_id}`}
+                style={{
+                  display: 'block', padding: '16px',
+                  borderBottom: '1px solid var(--admin-border)',
+                  textDecoration: 'none', cursor: 'pointer',
+                  background: 'transparent', transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--admin-bg-hover)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
               >
-                <div className="flex items-start gap-3">
-                  {/* Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(inc.incident_id)}
-                    onChange={(e) => { e.preventDefault(); e.stopPropagation(); toggleSelect(inc.incident_id); }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-1 w-3.5 h-3.5 rounded bg-[#111827] border-white/10 accent-blue-500 flex-shrink-0"
-                  />
-
-                  {/* Category icon */}
-                  <span className="text-lg flex-shrink-0 mt-0.5" title={CATEGORY_LABEL[inc.category]}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ 
+                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                    background: 'var(--admin-bg-active)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                    border: '1px solid var(--admin-border)'
+                  }}>
                     {CATEGORY_ICONS[inc.category] ?? '📋'}
-                  </span>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
                       <PriorityBadge tier={inc.priority_tier} score={inc.priority_score} />
                       <StatusBadge status={inc.status} />
-                      {inc.flagged_mismatch && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">
-                          ⚠ Mismatch
-                        </span>
-                      )}
-                      {inc.is_recurrence && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 font-medium">
-                          🔄 Recurring
-                        </span>
-                      )}
+                      {inc.flagged_mismatch && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', border: '1px solid var(--color-semantic-warning)', fontWeight: 700 }}>⚠ Mismatch</span>}
                     </div>
-
-                    <div className="text-sm text-slate-200 truncate">{inc.address}</div>
-
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-500">
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--admin-text-primary)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {inc.address}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--admin-text-secondary)' }}>
                       <span>{CATEGORY_LABEL[inc.category]}</span>
-                      <span>·</span>
-                      <span>{inc.report_count} reporter{inc.report_count !== 1 ? 's' : ''}</span>
-                      <span>·</span>
+                      <span style={{ color: 'var(--admin-text-muted)' }}>•</span>
+                      <span>{inc.report_count} reports</span>
+                      <span style={{ color: 'var(--admin-text-muted)' }}>•</span>
                       <span>{inc.age_days.toFixed(0)}d ago</span>
-                      {inc.department && (
-                        <>
-                          <span>·</span>
-                          <span>{DEPARTMENT_LABEL[inc.department as Department]}</span>
-                        </>
-                      )}
                     </div>
                   </div>
-
-                  {/* Thumbnail */}
-                  {inc.thumbnail_url && (
-                    <div className="w-10 h-10 rounded-md bg-slate-800 flex-shrink-0 overflow-hidden">
-                      <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-[10px] text-slate-500">
-                        📷
-                      </div>
-                    </div>
-                  )}
                 </div>
               </Link>
             ))}
 
             {incidents.length === 0 && (
-              <div className="px-4 py-12 text-center text-sm text-slate-500">
+              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--admin-text-muted)', fontSize: 14 }}>
                 No incidents match the current filters.
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Right panel: Map ──────────────────────────────────────── */}
-        <div className={`
-          ${activeTab === 'map' ? 'flex' : 'hidden'}
-          lg:flex flex-col flex-1 overflow-hidden relative
-        `}>
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0d1224]/50 to-transparent pointer-events-none z-[400] h-16" />
-          
-          <Map
-            markers={incidents.map((inc) => ({
-              id: inc.incident_id,
-              lat: inc.centroid.lat,
-              lng: inc.centroid.lng,
-              tier: inc.priority_tier,
-              count: inc.report_count,
-              title: `${CATEGORY_LABEL[inc.category]} — ${inc.report_count} report(s)`,
-              onClick: () => router.push(`/admin/incidents/${inc.incident_id}`),
-            }))}
-          />
-          
-          {/* Map Legend Overlay */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] bg-[#111827]/80 backdrop-blur-md border border-white/[0.06] rounded-full px-4 py-2 flex gap-4 shadow-xl">
-            {PRIORITY_TIERS.map((tier) => {
+        {/* ─── Map panel ─── */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0 }}
+          className={activeTab === 'map' ? 'flex' : 'hidden lg:flex'}
+        >
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <Map
+              markers={incidents.map(inc => ({
+                id: inc.incident_id,
+                lat: inc.centroid.lat,
+                lng: inc.centroid.lng,
+                tier: inc.priority_tier,
+                count: inc.report_count,
+                title: `${CATEGORY_LABEL[inc.category]} — ${inc.report_count} report(s)`,
+                onClick: () => router.push(`/admin/incidents/${inc.incident_id}`),
+              }))}
+              isDark={isDark}
+            />
+          </div>
+
+          {/* Legend */}
+          <div style={{
+            position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 500,
+            background: 'var(--admin-bg-elevated)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid var(--admin-border)',
+            borderRadius: 999, padding: '8px 24px',
+            display: 'flex', gap: 20, alignItems: 'center',
+            boxShadow: 'var(--admin-shadow-elevated)',
+          }}>
+            {PRIORITY_TIERS.map(tier => {
               const c = TIER_COLORS[tier];
-              const count = incidents.filter((i) => i.priority_tier === tier).length;
+              const count = incidents.filter(i => i.priority_tier === tier).length;
               return (
-                <span key={tier} className={`flex items-center gap-1.5 text-[10px] font-medium ${c.text}`}>
-                  <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                <span key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: c.text }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.text }} />
                   {tier} ({count})
                 </span>
               );

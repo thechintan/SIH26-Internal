@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { useTheme } from '../../_lib/theme-context';
 import {
   CATEGORY_LABEL,
   DEPARTMENT_LABEL,
@@ -12,124 +13,113 @@ import {
   type Status,
 } from '../../../../lib/contracts/enums';
 import type { IncidentDetail, PriorityBreakdown } from '../../../../lib/contracts/incident';
-import { INCIDENTS } from '../../../../mocks/fixtures';
+import { INCIDENTS, INCIDENT_SUMMARIES } from '../../../../mocks/fixtures';
 import { TIER_COLORS, STATUS_COLORS, CATEGORY_ICONS } from '../../_lib/constants';
 import Map from '../../_components/Map';
 
-/* ── Priority Breakdown Panel (PRD §10.4 — non-negotiable) ────────────────── */
-
-function BreakdownPanel({ breakdown }: { breakdown: PriorityBreakdown }) {
-  const terms = [
-    {
-      label: 'Severity',
-      sublabel: 'Category base score',
-      input: breakdown.factors.severity.baseSeverity.toString(),
-      weighted: breakdown.factors.severity.weighted,
-      color: 'bg-red-500',
-    },
-    {
-      label: 'Reports',
-      sublabel: `${breakdown.factors.reportCount.uniqueUsers} unique reporter${breakdown.factors.reportCount.uniqueUsers !== 1 ? 's' : ''}`,
-      input: `ln(1+${breakdown.factors.reportCount.uniqueUsers})`,
-      weighted: breakdown.factors.reportCount.weighted,
-      color: 'bg-blue-500',
-    },
-    {
-      label: 'Age',
-      sublabel: `${breakdown.factors.age.daysOpen} day${breakdown.factors.age.daysOpen !== 1 ? 's' : ''} open`,
-      input: `${breakdown.factors.age.daysOpen}d`,
-      weighted: breakdown.factors.age.weighted,
-      color: 'bg-amber-500',
-    },
-    {
-      label: 'Recurrence',
-      sublabel: breakdown.factors.recurrence.isRecurring ? 'Location failed before' : 'First occurrence',
-      input: breakdown.factors.recurrence.isRecurring ? 'Yes' : 'No',
-      weighted: breakdown.factors.recurrence.weighted,
-      color: 'bg-violet-500',
-    },
-  ];
-
-  const maxWeighted = Math.max(...terms.map((t) => t.weighted), 1);
-
+// ── Shared Card Wrapper ──
+function Card({ children, className = '' }: { children: React.ReactNode, className?: string }) {
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-200">Priority Breakdown</h3>
-        <span className="text-xs text-slate-500">
-          Computed {new Date(breakdown.computedAt).toLocaleString()}
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {terms.map((t) => (
-          <div key={t.label}>
-            <div className="flex items-baseline justify-between mb-1">
-              <div>
-                <span className="text-xs font-medium text-slate-300">{t.label}</span>
-                <span className="text-[10px] text-slate-500 ml-2">{t.sublabel}</span>
-              </div>
-              <span className="text-xs font-mono text-slate-400">{t.weighted.toFixed(2)}</span>
-            </div>
-            <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${t.color} transition-all duration-500`}
-                style={{ width: `${(t.weighted / maxWeighted) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="pt-3 border-t border-white/[0.06] flex items-baseline justify-between">
-        <span className="text-sm font-semibold text-slate-200">Total Score</span>
-        <span className="text-xl font-bold text-white">{breakdown.score.toFixed(2)}</span>
-      </div>
+    <div style={{
+      background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)',
+      borderRadius: 12, padding: 20,
+      boxShadow: 'var(--admin-shadow-card)',
+    }} className={className}>
+      {children}
     </div>
   );
 }
 
-/* ── Status transition controls ───────────────────────────────────────────── */
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--admin-text-primary)', marginBottom: 12 }}>{children}</h3>;
+}
 
-function StatusControls({ incident }: { incident: IncidentDetail }) {
-  const availableTransitions = useMemo(() => {
-    return STATUS_TRANSITIONS[incident.status].filter((to) =>
-      canTransition(incident.status, to)
-    );
-  }, [incident.status]);
+function BreakdownPanel({ breakdown }: { breakdown: PriorityBreakdown; }) {
+  const terms = [
+    { label: 'Severity', sublabel: 'Category base score', input: breakdown.factors.severity.baseSeverity.toString(), weighted: breakdown.factors.severity.weighted, color: 'var(--color-semantic-danger)' },
+    { label: 'Reports', sublabel: `${breakdown.factors.reportCount.uniqueUsers} unique reporter(s)`, input: `ln(1+${breakdown.factors.reportCount.uniqueUsers})`, weighted: breakdown.factors.reportCount.weighted, color: 'var(--color-semantic-info)' },
+    { label: 'Age', sublabel: `${breakdown.factors.age.daysOpen} day(s) open`, input: `${breakdown.factors.age.daysOpen}d`, weighted: breakdown.factors.age.weighted, color: 'var(--color-semantic-warning)' },
+    { label: 'Recurrence', sublabel: breakdown.factors.recurrence.isRecurring ? 'Location failed before' : 'First occurrence', input: breakdown.factors.recurrence.isRecurring ? 'Yes' : 'No', weighted: breakdown.factors.recurrence.weighted, color: 'var(--color-semantic-brand)' },
+  ];
+  const maxWeighted = Math.max(...terms.map((t) => t.weighted), 1);
 
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-slate-200">Actions</h3>
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <SectionTitle>Priority Breakdown</SectionTitle>
+        <span style={{ fontSize: 11, color: 'var(--admin-text-muted)' }}>Computed {new Date(breakdown.computedAt).toLocaleString()}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {terms.map((t) => (
+          <div key={t.label}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--admin-text-primary)' }}>{t.label}</span>
+                <span style={{ fontSize: 10, color: 'var(--admin-text-muted)', marginLeft: 8 }}>{t.sublabel}</span>
+              </div>
+              <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--admin-text-secondary)' }}>{t.weighted.toFixed(2)}</span>
+            </div>
+            <div style={{ height: 8, background: 'var(--admin-bg-active)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 4, background: t.color, transition: 'width 0.5s ease', width: `${(t.weighted / maxWeighted) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--admin-border)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--admin-text-primary)' }}>Total Score</span>
+        <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--admin-text-primary)' }}>{breakdown.score.toFixed(2)}</span>
+      </div>
+    </Card>
+  );
+}
 
-      <div className="space-y-2">
-        {/* Current status */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Current:</span>
-          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${STATUS_COLORS[incident.status]}`}>
+function StatusControls({ incident, onTransition }: { incident: IncidentDetail; onTransition: (to: Status) => void }) {
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState('');
+  
+  const availableTransitions = useMemo(() => {
+    return STATUS_TRANSITIONS[incident.status].filter((to) => canTransition(incident.status, to));
+  }, [incident.status]);
+
+  const mergeCandidates = useMemo(() => {
+    return INCIDENT_SUMMARIES.filter(i => i.incident_id !== incident.incident_id && !['RESOLVED', 'VERIFIED', 'REJECTED', 'DUPLICATE'].includes(i.status));
+  }, [incident.incident_id]);
+
+  return (
+    <Card>
+      <SectionTitle>Actions</SectionTitle>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>Current:</span>
+          <span style={{
+            display: 'inline-flex', padding: '2px 10px', borderRadius: 9999,
+            fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+            background: STATUS_COLORS[incident.status].bg, color: STATUS_COLORS[incident.status].text, border: `1px solid ${STATUS_COLORS[incident.status].border}`
+          }}>
             {incident.status.replace('_', ' ')}
           </span>
         </div>
 
-        {/* Transition buttons */}
         {availableTransitions.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {availableTransitions.map((to) => {
               const isPositive = ['ACKNOWLEDGED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED'].includes(to);
               const isNegative = ['REJECTED', 'DUPLICATE'].includes(to);
+              
+              let bg = 'var(--admin-bg-base)', border = 'var(--admin-border)', text = 'var(--admin-text-secondary)';
+              if (isPositive) { bg = 'var(--bg-semantic-info)'; border = 'var(--color-semantic-info)'; text = 'var(--color-semantic-info)'; }
+              if (isNegative) { bg = 'var(--bg-semantic-danger)'; border = 'var(--color-semantic-danger)'; text = 'var(--color-semantic-danger)'; }
 
               return (
                 <button
                   key={to}
-                  className={`
-                    px-3 py-1.5 rounded-lg text-xs font-medium transition-all
-                    ${isPositive
-                      ? 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border border-blue-500/20'
-                      : isNegative
-                        ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/15'
-                        : 'bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] border border-white/[0.06]'
-                    }
-                  `}
+                  onClick={() => onTransition(to)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: bg, border: `1px solid ${border}`, color: text,
+                    cursor: 'pointer', transition: 'all 0.15s ease'
+                  }}
                   title={`Transition to ${to.replace('_', ' ')}`}
                 >
                   → {to.replace('_', ' ')}
@@ -140,141 +130,173 @@ function StatusControls({ incident }: { incident: IncidentDetail }) {
         )}
 
         {availableTransitions.length === 0 && (
-          <div className="text-xs text-slate-500 italic">
-            Terminal status — no further transitions.
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--admin-text-muted)', fontStyle: 'italic' }}>Terminal status — no further transitions.</div>
         )}
 
-        <div className="pt-2">
-          <button
-            className="w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-600 text-slate-400 hover:text-slate-200 hover:border-slate-400 transition-all flex items-center justify-center gap-2"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-            </svg>
-            Merge Duplicate Incidents
-          </button>
+        <div style={{ marginTop: 8 }}>
+          {!mergeModalOpen ? (
+            <button
+              onClick={() => setMergeModalOpen(true)}
+              style={{
+                width: '100%', padding: '8px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                border: '1px dashed var(--admin-border)', background: 'transparent',
+                color: 'var(--admin-text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--admin-text-muted)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--admin-text-primary)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--admin-border)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--admin-text-secondary)'; }}
+            >
+              <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+              Merge Duplicate Incidents
+            </button>
+          ) : (
+            <div style={{ padding: 12, border: '1px solid var(--admin-border)', borderRadius: 8, background: 'var(--admin-bg-base)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--admin-text-primary)' }}>Select incident to merge into:</div>
+              <select 
+                value={mergeTarget} 
+                onChange={e => setMergeTarget(e.target.value)}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--admin-border)', background: 'var(--admin-bg-surface)', color: 'var(--admin-text-primary)', fontSize: 12 }}
+              >
+                <option value="">-- Select Target --</option>
+                {mergeCandidates.map(c => (
+                  <option key={c.incident_id} value={c.incident_id}>
+                    {CATEGORY_LABEL[c.category]} - {c.address}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button 
+                  disabled={!mergeTarget}
+                  onClick={() => {
+                    onTransition('DUPLICATE');
+                    setMergeModalOpen(false);
+                  }}
+                  style={{
+                    flex: 1, padding: '6px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                    background: 'var(--bg-semantic-info)',
+                    border: '1px solid var(--color-semantic-info)',
+                    color: 'var(--color-semantic-info)', cursor: mergeTarget ? 'pointer' : 'not-allowed', opacity: mergeTarget ? 1 : 0.5
+                  }}
+                >
+                  Confirm Merge
+                </button>
+                <button 
+                  onClick={() => setMergeModalOpen(false)}
+                  style={{
+                    flex: 1, padding: '6px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                    background: 'var(--admin-bg-surface)', border: '1px solid var(--admin-border)', color: 'var(--admin-text-secondary)', cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Assignment */}
-      <div className="pt-3 border-t border-white/[0.06] space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">Department</span>
-          <span className="text-xs text-slate-300">
-            {incident.department ? DEPARTMENT_LABEL[incident.department as Department] : 'Triage Queue'}
-          </span>
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--admin-border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>Department</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--admin-text-primary)' }}>{incident.department ? DEPARTMENT_LABEL[incident.department as Department] : 'Triage Queue'}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">Assigned to</span>
-          <span className="text-xs text-slate-300">
-            {incident.assigned_to?.name ?? 'Unassigned'}
-          </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>Assigned to</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--admin-text-primary)' }}>{incident.assigned_to?.name ?? 'Unassigned'}</span>
         </div>
         {incident.sla_due_at && (
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">SLA Due</span>
-            <span className="text-xs text-slate-300">
-              {new Date(incident.sla_due_at).toLocaleDateString()}
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>SLA Due</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--admin-text-primary)' }}>{new Date(incident.sla_due_at).toLocaleDateString()}</span>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
-/* ── Status history audit trail ───────────────────────────────────────────── */
-
-function StatusTimeline({ incident }: { incident: IncidentDetail }) {
+function StatusTimeline({ incident }: { incident: IncidentDetail; }) {
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-slate-200">Status History</h3>
-      <div className="space-y-0">
+    <Card>
+      <SectionTitle>Status History</SectionTitle>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         {incident.status_history.map((entry, i) => (
-          <div key={i} className="flex gap-3 relative">
-            {/* Timeline line */}
+          <div key={i} style={{ display: 'flex', gap: 12, position: 'relative' }}>
             {i < incident.status_history.length - 1 && (
-              <div className="absolute left-[7px] top-5 w-px h-full bg-white/[0.06]" />
+               <div style={{ position: 'absolute', left: 7, top: 20, width: 1, height: '100%', background: 'var(--admin-border)' }} />
             )}
-            {/* Dot */}
-            <div className={`w-[15px] h-[15px] rounded-full border-2 flex-shrink-0 mt-0.5 ${
-              i === incident.status_history.length - 1
-                ? 'border-blue-500 bg-blue-500/20'
-                : 'border-slate-600 bg-[#0a0e1a]'
-            }`} />
-            {/* Content */}
-            <div className="pb-4 flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLORS[entry.to_status]}`}>
+            <div style={{
+              width: 15, height: 15, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+              border: i === incident.status_history.length - 1 ? `2px solid var(--color-semantic-info)` : `2px solid var(--admin-text-muted)`,
+              background: i === incident.status_history.length - 1 ? 'var(--bg-semantic-info)' : 'var(--admin-bg-surface)'
+            }} />
+            <div style={{ paddingBottom: 16, flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  display: 'inline-flex', padding: '1.5px 6px', borderRadius: 4,
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                  background: STATUS_COLORS[entry.to_status].bg, color: STATUS_COLORS[entry.to_status].text, border: `1px solid ${STATUS_COLORS[entry.to_status].border}`
+                }}>
                   {entry.to_status.replace('_', ' ')}
                 </span>
-                {entry.actor_name && (
-                  <span className="text-[10px] text-slate-500">by {entry.actor_name}</span>
-                )}
+                {entry.actor_name && <span style={{ fontSize: 10, color: 'var(--admin-text-muted)' }}>by {entry.actor_name}</span>}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                {new Date(entry.at).toLocaleString()}
-              </div>
-              {entry.note && (
-                <div className="text-xs text-slate-400 mt-1">{entry.note}</div>
-              )}
+              <div style={{ fontSize: 10, color: 'var(--admin-text-muted)', marginTop: 2 }}>{new Date(entry.at).toLocaleString()}</div>
+              {entry.note && <div style={{ fontSize: 12, color: 'var(--admin-text-secondary)', marginTop: 4 }}>{entry.note}</div>}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
-/* ── Severity consensus ───────────────────────────────────────────────────── */
-
-function SeverityConsensus({ consensus }: { consensus: IncidentDetail['severity_consensus'] }) {
+function SeverityConsensus({ consensus }: { consensus: IncidentDetail['severity_consensus']; }) {
   const total = consensus.MINOR + consensus.MODERATE + consensus.SEVERE;
   if (total === 0) return null;
 
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-slate-200">Reporter Severity Consensus</h3>
-      <div className="text-[10px] text-slate-500 -mt-1">Advisory only — does not feed the priority score</div>
-      <div className="flex gap-2">
+    <Card>
+      <SectionTitle>Reporter Severity Consensus</SectionTitle>
+      <div style={{ fontSize: 10, color: 'var(--admin-text-muted)', marginTop: -8, marginBottom: 12 }}>Advisory only — does not feed the priority score</div>
+      <div style={{ display: 'flex', gap: 8 }}>
         {[
-          { label: 'Minor', value: consensus.MINOR, color: 'bg-green-500' },
-          { label: 'Moderate', value: consensus.MODERATE, color: 'bg-yellow-500' },
-          { label: 'Severe', value: consensus.SEVERE, color: 'bg-red-500' },
+          { label: 'Minor', value: consensus.MINOR, color: 'var(--color-semantic-success)' },
+          { label: 'Moderate', value: consensus.MODERATE, color: 'var(--color-semantic-warning)' },
+          { label: 'Severe', value: consensus.SEVERE, color: 'var(--color-semantic-danger)' },
         ].map((s) => (
-          <div key={s.label} className="flex-1 text-center">
-            <div className={`h-2 rounded-full ${s.color} opacity-60 mb-1`}
-              style={{ width: `${(s.value / total) * 100}%`, minWidth: s.value > 0 ? '8px' : '0' }}
-            />
-            <div className="text-xs font-medium text-slate-300">{s.value}</div>
-            <div className="text-[10px] text-slate-500">{s.label}</div>
+          <div key={s.label} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ height: 8, borderRadius: 4, background: s.color, opacity: 0.8, marginBottom: 4, width: `${(s.value / total) * 100}%`, minWidth: s.value > 0 ? 8 : 0, margin: '0 auto' }} />
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--admin-text-primary)' }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: 'var(--admin-text-muted)' }}>{s.label}</div>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
-/* ── Recurrence chain ─────────────────────────────────────────────────────── */
-
-function RecurrenceChain({ chain }: { chain: IncidentDetail['recurrence_chain'] }) {
+function RecurrenceChain({ chain }: { chain: IncidentDetail['recurrence_chain']; }) {
   if (chain.length === 0) return null;
 
   return (
-    <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-rose-400">
-        🔄 Recurrence Chain — {chain.length + 1} incident{chain.length > 0 ? 's' : ''} at this location
+    <div style={{
+      background: 'var(--bg-semantic-danger)',
+      border: '1px solid var(--color-semantic-danger)',
+      borderRadius: 12, padding: 20, boxShadow: 'var(--admin-shadow-card)'
+    }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-semantic-danger)', marginBottom: 8 }}>
+        🔄 Recurrence Chain — {chain.length + 1} incident(s) at this location
       </h3>
-      <div className="text-xs text-slate-400">
+      <div style={{ fontSize: 12, color: 'var(--admin-text-secondary)', marginBottom: 12 }}>
         This location has had repeated failures. {chain.length >= 2 ? 'Infrastructure replacement may be needed, not just patching.' : ''}
       </div>
-      <div className="space-y-1">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {chain.map((c) => (
-          <div key={c.incident_id} className="flex items-center gap-3 text-xs">
-            <span className="text-slate-500">{new Date(c.first_reported_at).toLocaleDateString()}</span>
-            <span className="text-slate-600">→</span>
-            <span className={c.resolved_at ? 'text-green-400' : 'text-amber-400'}>
+          <div key={c.incident_id} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
+            <span style={{ color: 'var(--admin-text-muted)' }}>{new Date(c.first_reported_at).toLocaleDateString()}</span>
+            <span style={{ color: 'var(--admin-text-secondary)' }}>→</span>
+            <span style={{ color: c.resolved_at ? 'var(--color-semantic-success)' : 'var(--color-semantic-warning)', fontWeight: 500 }}>
               {c.resolved_at ? `Resolved ${new Date(c.resolved_at).toLocaleDateString()}` : 'Still open'}
             </span>
           </div>
@@ -284,9 +306,7 @@ function RecurrenceChain({ chain }: { chain: IncidentDetail['recurrence_chain'] 
   );
 }
 
-/* ── Verification tally ───────────────────────────────────────────────────── */
-
-function VerificationTally({ verification, status }: { verification: IncidentDetail['verification']; status: Status }) {
+function VerificationTally({ verification, status }: { verification: IncidentDetail['verification']; status: Status; }) {
   if (status !== 'RESOLVED' && status !== 'VERIFIED' && status !== 'REOPENED') return null;
   const total = verification.fixed + verification.not_fixed + verification.pending;
   if (total === 0) return null;
@@ -294,49 +314,47 @@ function VerificationTally({ verification, status }: { verification: IncidentDet
   const pctNotFixed = total > 0 ? (verification.not_fixed / (verification.fixed + verification.not_fixed || 1)) : 0;
 
   return (
-    <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-slate-200">Citizen Verification</h3>
-      <div className="grid grid-cols-3 gap-3 text-center">
+    <Card>
+      <SectionTitle>Citizen Verification</SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
         <div>
-          <div className="text-lg font-bold text-emerald-400">{verification.fixed}</div>
-          <div className="text-[10px] text-slate-500">Fixed</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-semantic-success)' }}>{verification.fixed}</div>
+          <div style={{ fontSize: 10, color: 'var(--admin-text-muted)' }}>Fixed</div>
         </div>
         <div>
-          <div className="text-lg font-bold text-rose-400">{verification.not_fixed}</div>
-          <div className="text-[10px] text-slate-500">Not Fixed</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-semantic-danger)' }}>{verification.not_fixed}</div>
+          <div style={{ fontSize: 10, color: 'var(--admin-text-muted)' }}>Not Fixed</div>
         </div>
         <div>
-          <div className="text-lg font-bold text-slate-400">{verification.pending}</div>
-          <div className="text-[10px] text-slate-500">Pending</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--admin-text-secondary)' }}>{verification.pending}</div>
+          <div style={{ fontSize: 10, color: 'var(--admin-text-muted)' }}>Pending</div>
         </div>
       </div>
       {pctNotFixed > 0.4 && (
-        <div className="text-xs text-rose-400 font-medium">
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-semantic-danger)', marginTop: 12 }}>
           ⚠ &gt;40% say not fixed — auto-reopen threshold reached
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
-/* ── Incident Detail Page ─────────────────────────────────────────────────── */
-
 export default function IncidentDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const incidentId = params.id as string;
 
-  const incident = useMemo(() =>
-    INCIDENTS.find((i) => i.incident_id === incidentId),
-    [incidentId]
-  );
+  const initialIncident = useMemo(() => INCIDENTS.find((i) => i.incident_id === incidentId), [incidentId]);
+  const [incident, setIncident] = useState<IncidentDetail | undefined>(initialIncident);
+  const { isDark } = useTheme();
 
   if (!incident) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="text-4xl">🔍</div>
-          <div className="text-sm text-slate-400">Incident not found</div>
-          <Link href="/admin" className="text-xs text-blue-400 hover:underline">← Back to queue</Link>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 36 }}>🔍</div>
+          <div style={{ fontSize: 14, color: 'var(--admin-text-muted)' }}>Incident not found</div>
+          <Link href="/admin" style={{ fontSize: 12, color: 'var(--color-semantic-info)', textDecoration: 'none' }}>← Back to queue</Link>
         </div>
       </div>
     );
@@ -345,185 +363,165 @@ export default function IncidentDetailPage() {
   const tierColors = TIER_COLORS[incident.priority_tier];
 
   return (
-    <div className="p-4 lg:p-6 max-w-7xl mx-auto space-y-6">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <Link href="/admin" className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+    <div style={{ padding: '24px', maxWidth: 1280, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Link href="/admin" style={{ fontSize: 12, color: 'var(--color-semantic-info)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+            <svg style={{ width: 12, height: 12 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             Back to Queue
           </Link>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--admin-text-primary)', display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 0' }}>
             <span>{CATEGORY_ICONS[incident.category]}</span>
             {CATEGORY_LABEL[incident.category]}
           </h1>
-          <div className="text-sm text-slate-400">{incident.address}</div>
-          {incident.ward_name && (
-            <div className="text-xs text-slate-500">Ward: {incident.ward_name}</div>
-          )}
+          <div style={{ fontSize: 14, color: 'var(--admin-text-secondary)' }}>{incident.address}</div>
+          {incident.ward_name && <div style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>Ward: {incident.ward_name}</div>}
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${tierColors.bg} ${tierColors.text} ${tierColors.border} border`}>
-            <span className={`w-2 h-2 rounded-full ${tierColors.dot}`} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 9999,
+            fontSize: 14, fontWeight: 700,
+            background: tierColors.bg, color: tierColors.text, border: `1px solid ${tierColors.border}`
+          }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: tierColors.text }} />
             {incident.priority_score.toFixed(1)}
           </span>
-          <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide ${STATUS_COLORS[incident.status]}`}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-semantic-success)', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--color-semantic-success)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-semantic-success)', boxShadow: '0 0 8px var(--color-semantic-success)', animation: 'pulse 2s infinite' }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-semantic-success)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live Sync</span>
+          </div>
+
+          <span style={{
+            display: 'inline-flex', padding: '4px 12px', borderRadius: 9999,
+            fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+            background: STATUS_COLORS[incident.status].bg, color: STATUS_COLORS[incident.status].text, border: `1px solid ${STATUS_COLORS[incident.status].border}`
+          }}>
             {incident.status.replace('_', ' ')}
           </span>
           {incident.manual_override && (
-            <span className="text-[10px] px-2 py-1 rounded bg-amber-500/10 text-amber-400 font-medium border border-amber-500/15">
+            <span style={{ fontSize: 10, padding: '4px 8px', borderRadius: 4, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', fontWeight: 600, border: '1px solid var(--color-semantic-warning)' }}>
               📌 Pinned
             </span>
           )}
         </div>
       </div>
 
-      {/* ── Body: Two columns ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Left column: Photos + reports info */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Photo gallery */}
-          <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-200">
-              Report Photos
-              <span className="text-xs text-slate-500 font-normal ml-2">
-                {incident.reports.length} of {incident.report_count} reports shown
-              </span>
-            </h3>
-            <div className="grid grid-cols-4 gap-2">
-              {incident.reports.map((r) => (
-                <div key={r.report_id} className="aspect-square bg-slate-800 rounded-lg overflow-hidden relative group">
-                  <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-lg">
-                    📷
-                  </div>
-                  {r.description && (
-                    <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm p-1.5 text-[9px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {r.description}
+      {/* ── Body ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 24 }}>
+        {/* Left column */}
+        <div style={{ gridColumn: 'span 12' }} className="lg:col-span-8 space-y-6">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            
+            <Card>
+              <SectionTitle>
+                Report Photos <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--admin-text-muted)', marginLeft: 8 }}>{incident.reports.length} of {incident.report_count} reports shown</span>
+              </SectionTitle>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {incident.reports.map((r) => (
+                  <div key={r.report_id} style={{
+                    aspectRatio: '1', borderRadius: 8, overflow: 'hidden', position: 'relative',
+                    background: 'var(--admin-bg-active)',
+                    border: '1px solid var(--admin-border)',
+                  }}>
+                    <div style={{ position: 'absolute', inset: 0 }}>
+                      {r.photo_url ? (
+                        <img src={r.photo_url} alt={`Report ${r.ticket_id}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📷</div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Map: centroid + scatter */}
-          <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-200">Location</h3>
-            <div className="h-64 rounded-lg overflow-hidden relative border border-white/[0.06] bg-[#0f1629]">
-              <Map
-                markers={[
-                  // Individual reports (scatter)
-                  ...incident.reports.map((r) => ({
-                    id: r.report_id,
-                    lat: r.location.lat,
-                    lng: r.location.lng,
-                    title: `Report #${r.ticket_id}`,
-                    isCentroid: false,
-                  })),
-                  // Centroid
-                  {
-                    id: 'centroid',
-                    lat: incident.centroid.lat,
-                    lng: incident.centroid.lng,
-                    title: 'Calculated Centroid',
-                    isCentroid: true,
-                  }
-                ]}
-                center={[incident.centroid.lat, incident.centroid.lng]}
-                zoom={14}
-              />
-            </div>
-            <div className="text-[10px] text-slate-500 flex items-center justify-between">
-              <span>Centroid: {incident.centroid.lat.toFixed(4)}, {incident.centroid.lng.toFixed(4)}</span>
-              <a 
-                href={`https://www.google.com/maps?q=${incident.centroid.lat},${incident.centroid.lng}`} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline"
-              >
-                Open in Google Maps ↗
-              </a>
-            </div>
-          </div>
-
-          {/* Citizen notes */}
-          {incident.reports.some((r) => r.description) && (
-            <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-200">Citizen Notes</h3>
-              <div className="space-y-2">
-                {incident.reports.filter((r) => r.description).map((r) => (
-                  <div key={r.report_id} className="text-xs text-slate-400 bg-white/[0.02] rounded-lg p-3">
-                    <span className="text-slate-500 mr-2">#{r.ticket_id}</span>
-                    {r.description}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            </Card>
 
-          {/* Resolution photo */}
-          {incident.resolution_photo_url && (
-            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-emerald-400">✅ Resolution Photo</h3>
-              <div className="h-48 bg-slate-800 rounded-lg flex items-center justify-center text-2xl">
-                📷
+            <Card>
+              <SectionTitle>Location</SectionTitle>
+              <div style={{ height: 260, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--admin-border)', background: 'var(--admin-bg-active)', position: 'relative' }}>
+                <div style={{ position: 'absolute', inset: 0 }}>
+                  <Map
+                    markers={[
+                      ...incident.reports.map((r) => ({ id: r.report_id, lat: r.location.lat, lng: r.location.lng, title: `Report #${r.ticket_id}`, isCentroid: false })),
+                      { id: 'centroid', lat: incident.centroid.lat, lng: incident.centroid.lng, title: 'Calculated Centroid', isCentroid: true }
+                    ]}
+                    center={[incident.centroid.lat, incident.centroid.lng]}
+                    zoom={14}
+                    isDark={isDark}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <span style={{ fontSize: 11, color: 'var(--admin-text-muted)' }}>Centroid: {incident.centroid.lat.toFixed(4)}, {incident.centroid.lng.toFixed(4)}</span>
+                <a href={`https://www.google.com/maps?q=${incident.centroid.lat},${incident.centroid.lng}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--color-semantic-info)', textDecoration: 'none' }}>Open in Google Maps ↗</a>
+              </div>
+            </Card>
+
+            {incident.reports.some(r => r.description) && (
+              <Card>
+                <SectionTitle>Citizen Notes</SectionTitle>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {incident.reports.filter(r => r.description).map((r) => (
+                    <div key={r.report_id} style={{ padding: 12, borderRadius: 8, background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)', fontSize: 13, color: 'var(--admin-text-secondary)' }}>
+                      <span style={{ color: 'var(--admin-text-muted)', marginRight: 8, fontWeight: 600 }}>#{r.ticket_id}</span>
+                      {r.description}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {incident.resolution_photo_url && (
+              <div style={{ background: 'var(--bg-semantic-success)', border: '1px solid var(--color-semantic-success)', borderRadius: 12, padding: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-semantic-success)', marginBottom: 12 }}>✅ Resolution Photo</h3>
+                <div style={{ height: 200, borderRadius: 8, background: 'var(--admin-bg-active)', overflow: 'hidden', position: 'relative' }}>
+                  <img src={incident.resolution_photo_url} alt="Resolution" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              </div>
+            )}
+            
+          </div>
         </div>
 
-        {/* Right column: Breakdown + controls */}
-        <div className="space-y-6">
-          {/* Priority breakdown — THE non-negotiable panel */}
-          {incident.priority_breakdown && (
-            <BreakdownPanel breakdown={incident.priority_breakdown} />
-          )}
+        {/* Right column */}
+        <div style={{ gridColumn: 'span 12' }} className="lg:col-span-4 space-y-6">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {incident.priority_breakdown && <BreakdownPanel breakdown={incident.priority_breakdown} />}
+            <StatusControls 
+              incident={incident} 
+              onTransition={(newStatus) => {
+                setIncident(prev => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    status: newStatus,
+                    status_history: [
+                      ...prev.status_history,
+                      { to_status: newStatus, at: new Date().toISOString(), actor_name: 'Super Admin', note: 'Status updated via admin dashboard' }
+                    ]
+                  };
+                });
+              }}
+            />
+            <StatusTimeline incident={incident} />
+            <SeverityConsensus consensus={incident.severity_consensus} />
+            <RecurrenceChain chain={incident.recurrence_chain} />
+            <VerificationTally verification={incident.verification} status={incident.status} />
 
-          {/* Status transition controls */}
-          <StatusControls incident={incident} />
-
-          {/* Status history */}
-          <StatusTimeline incident={incident} />
-
-          {/* Severity consensus */}
-          <SeverityConsensus consensus={incident.severity_consensus} />
-
-          {/* Recurrence chain */}
-          <RecurrenceChain chain={incident.recurrence_chain} />
-
-          {/* Verification tally */}
-          <VerificationTally verification={incident.verification} status={incident.status} />
-
-          {/* Quick stats */}
-          <div className="bg-[#111827]/60 border border-white/[0.06] rounded-xl p-5 space-y-2">
-            <h3 className="text-sm font-semibold text-slate-200">Details</h3>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">First reported</span>
-                <span className="text-slate-300">{new Date(incident.first_reported_at).toLocaleDateString()}</span>
+            <Card>
+              <SectionTitle>Details</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--admin-text-muted)' }}>First reported</span><span style={{ color: 'var(--admin-text-primary)', fontWeight: 500 }}>{new Date(incident.first_reported_at).toLocaleDateString()}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--admin-text-muted)' }}>Report count</span><span style={{ color: 'var(--admin-text-primary)', fontWeight: 500 }}>{incident.report_count} unique reporters</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--admin-text-muted)' }}>Age</span><span style={{ color: 'var(--admin-text-primary)', fontWeight: 500 }}>{incident.age_days.toFixed(1)} days</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--admin-text-muted)' }}>Category</span><span style={{ color: 'var(--admin-text-primary)', fontWeight: 500 }}>{CATEGORY_LABEL[incident.category]}</span></div>
+                {incident.flagged_mismatch && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--color-semantic-warning)', fontWeight: 600 }}>⚠ Flagged mismatch</span><span style={{ color: 'var(--color-semantic-warning)', fontSize: 10 }}>Category may be wrong</span></div>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Report count</span>
-                <span className="text-slate-300">{incident.report_count} unique reporters</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Age</span>
-                <span className="text-slate-300">{incident.age_days.toFixed(1)} days</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Category</span>
-                <span className="text-slate-300">{CATEGORY_LABEL[incident.category]}</span>
-              </div>
-              {incident.flagged_mismatch && (
-                <div className="flex justify-between">
-                  <span className="text-amber-400">⚠ Flagged mismatch</span>
-                  <span className="text-amber-400 text-[10px]">Category may be wrong</span>
-                </div>
-              )}
-            </div>
+            </Card>
           </div>
         </div>
       </div>

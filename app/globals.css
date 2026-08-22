@@ -5,24 +5,86 @@
 @import 'leaflet/dist/leaflet.css';
 
 /*
- * The whole product — citizen app, admin console, field view — is designed as a
- * light UI (white cards on a light-grey ground). A half-applied `prefers-color-scheme`
- * dark override used to paint the body black while every page stayed light, which
- * is what made unstyled areas (the landing hero) look broken. Commit to light.
+ * Base theme: the citizen-facing app is light by default.
+ * The admin dashboard applies its own dark/light theme via the `dark` class
+ * on <html>, managed by AdminThemeProvider in app/admin/_lib/theme-context.tsx.
  */
 :root {
-  --background: #f8fafc; /* slate-50 */
-  --foreground: #0f172a; /* slate-900 */
+  /* Layout Tokens */
+  --admin-bg-base: #f8f9fb;
+  --admin-bg-surface: #ffffff;
+  --admin-bg-elevated: #ffffff;
+  --admin-bg-hover: #f1f5f9;
+  --admin-bg-active: #e2e8f0;
+  
+  --admin-border: #e2e8f0;
+  --admin-border-hover: #cbd5e1;
+  
+  /* Text Tokens */
+  --admin-text-primary: #0f172a;
+  --admin-text-secondary: #475569;
+  --admin-text-muted: #94a3b8;
+  
+  /* Semantic Colors */
+  --color-semantic-info: #3b82f6;
+  --color-semantic-warning: #f59e0b;
+  --color-semantic-success: #10b981;
+  --color-semantic-danger: #ef4444;
+  --color-semantic-brand: #8b5cf6;
+  
+  /* Status Backgrounds (15% opacity tint for light mode) */
+  --bg-semantic-info: rgba(59, 130, 246, 0.15);
+  --bg-semantic-warning: rgba(245, 158, 11, 0.15);
+  --bg-semantic-success: rgba(16, 185, 129, 0.15);
+  --bg-semantic-danger: rgba(239, 68, 68, 0.15);
+  --bg-semantic-brand: rgba(139, 92, 246, 0.15);
+  
+  /* Shadows */
+  --admin-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --admin-shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
 }
 
-html {
-  color-scheme: light;
+html.dark {
+  color-scheme: dark;
+  
+  /* Layered Dark Palette */
+  --admin-bg-base: #0d0f14;
+  --admin-bg-surface: #151822;
+  --admin-bg-elevated: #1c2030;
+  --admin-bg-hover: #1c2030;
+  --admin-bg-active: #23283b;
+  
+  --admin-border: rgba(255, 255, 255, 0.08);
+  --admin-border-hover: rgba(255, 255, 255, 0.15);
+  
+  /* High Contrast Text */
+  --admin-text-primary: #f8fafc;
+  --admin-text-secondary: #94a3b8;
+  --admin-text-muted: #64748b;
+  
+  /* Semantic Colors (slightly brightened for dark mode) */
+  --color-semantic-info: #60a5fa;
+  --color-semantic-warning: #fbbf24;
+  --color-semantic-success: #34d399;
+  --color-semantic-danger: #f87171;
+  --color-semantic-brand: #a78bfa;
+  
+  /* Status Backgrounds (15% opacity tint for dark mode) */
+  --bg-semantic-info: rgba(96, 165, 250, 0.15);
+  --bg-semantic-warning: rgba(251, 191, 36, 0.15);
+  --bg-semantic-success: rgba(52, 211, 153, 0.15);
+  --bg-semantic-danger: rgba(248, 113, 113, 0.15);
+  --bg-semantic-brand: rgba(167, 139, 250, 0.15);
+  
+  /* Shadows - Use subtle border instead of heavy shadows in dark mode */
+  --admin-shadow-card: none;
+  --admin-shadow-elevated: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  /* Font family comes from the Inter variable set on <body> in layout.tsx. */
+  color: var(--admin-text-primary);
+  background: var(--admin-bg-base);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 @layer utilities {
