@@ -48,28 +48,36 @@ import {
  * P = w1·S_cat + w2·ln(1 + N_users) + w3·D_open + w4·B_recur   (PRD §7)
  */
 export const PriorityBreakdownSchema = z.object({
-  severity: z.object({
-    /** S_cat from the category_severity table, not from code. */
-    input: z.number(),
-    weighted: z.number(),
+  score: z.number(),
+  tier: PriorityTierSchema,
+  factors: z.object({
+    severity: z.object({
+      category: CategorySchema,
+      baseSeverity: z.number(),
+      weighted: z.number(),
+    }),
+    reportCount: z.object({
+      uniqueUsers: z.number().int().nonnegative(),
+      logValue: z.number(),
+      weighted: z.number(),
+    }),
+    age: z.object({
+      daysOpen: z.number(),
+      weighted: z.number(),
+    }),
+    recurrence: z.object({
+      isRecurring: z.boolean(),
+      bonus: z.number(),
+      weighted: z.number(),
+    }),
   }),
-  reports: z.object({
-    /** N_users — unique reporters. The log is what stops one viral issue starving the queue. */
-    input: z.number().int().nonnegative(),
-    weighted: z.number(),
+  weights: z.object({
+    w1: z.number(),
+    w2: z.number(),
+    w3: z.number(),
+    w4: z.number(),
   }),
-  age: z.object({
-    /** D_open in days. The anti-starvation term: a minor issue open 3 weeks should rise. */
-    input: z.number(),
-    weighted: z.number(),
-  }),
-  recurrence: z.object({
-    /** B_recur — 0 for a new location, 2 when this location has failed before. */
-    input: z.number(),
-    weighted: z.number(),
-  }),
-  total: z.number(),
-  computed_at: TimestampSchema,
+  computedAt: TimestampSchema,
 });
 export type PriorityBreakdown = z.infer<typeof PriorityBreakdownSchema>;
 

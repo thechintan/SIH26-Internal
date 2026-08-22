@@ -89,15 +89,16 @@ check('breakdown terms sum to the total', () => {
   for (const i of INCIDENTS) {
     const b = i.priority_breakdown;
     if (!b) continue;
-    const sum = b.severity.weighted + b.reports.weighted + b.age.weighted + b.recurrence.weighted;
-    if (Math.abs(sum - b.total) > 0.05) {
-      throw new Error(`${i.incident_id}: terms sum to ${sum.toFixed(2)}, total says ${b.total}`);
+    const f = b.factors;
+    const sum = f.severity.weighted + f.reportCount.weighted + f.age.weighted + f.recurrence.weighted;
+    if (Math.abs(sum - b.score) > 0.05) {
+      throw new Error(`${i.incident_id}: terms sum to ${sum.toFixed(2)}, total says ${b.score}`);
     }
   }
 });
 check('breakdown total equals priority_score', () => {
   for (const i of INCIDENTS) {
-    if (i.priority_breakdown && Math.abs(i.priority_breakdown.total - i.priority_score) > 0.01) {
+    if (i.priority_breakdown && Math.abs(i.priority_breakdown.score - i.priority_score) > 0.01) {
       throw new Error(`${i.incident_id}: breakdown and score disagree`);
     }
   }

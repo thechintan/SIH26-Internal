@@ -9,25 +9,41 @@
  * requires a new decision file under .claude/decisions/.
  */
 
-// ─── Category Enum (9 members) ──────────────────────────────────────────────
-// From ENUMS.md — reconciled from PRD §7, §9.3, and schema
+import {
+  type Category,
+  type Status,
+  type Department,
+  type SeveritySelf as Severity,
+  type PriorityTier,
+} from '../contracts/enums';
 
-export const CategoryEnum = {
-  POTHOLE: 'POTHOLE',
-  STREETLIGHT: 'STREETLIGHT',
-  GARBAGE: 'GARBAGE',
-  WATER_LEAK: 'WATER_LEAK',
-  FOOTPATH: 'FOOTPATH',
-  DRAIN_MANHOLE: 'DRAIN_MANHOLE',
-  ELECTRICAL: 'ELECTRICAL',
-  STRUCTURAL: 'STRUCTURAL',
-  OTHER: 'OTHER',
+// ─── Status Constants ───────────────────────────────────────────────────────
+
+/** Statuses that count as "open" for clustering purposes */
+export const OPEN_STATUSES: ReadonlySet<Status> = new Set<Status>([
+  'SUBMITTED',
+  'ACKNOWLEDGED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'REOPENED',
+]);
+
+/** Terminal statuses — no further transitions */
+export const TERMINAL_STATUSES: ReadonlySet<Status> = new Set<Status>([
+  'VERIFIED',
+  'REJECTED',
+  'DUPLICATE',
+]);
+
+/** Score thresholds — score >= threshold maps to that tier */
+export const PRIORITY_THRESHOLDS: Record<
+  Exclude<PriorityTier, 'LOW'>,
+  number
+> = {
+  CRITICAL: 20,
+  HIGH: 14,
+  MEDIUM: 8,
 } as const;
-
-export type Category = (typeof CategoryEnum)[keyof typeof CategoryEnum];
-
-// ─── Status Enum (9 members) ────────────────────────────────────────────────
-// PRD's 7 + VERIFIED + REOPENED (decision 003)
 
 export const StatusEnum = {
   SUBMITTED: 'SUBMITTED',
@@ -41,48 +57,17 @@ export const StatusEnum = {
   DUPLICATE: 'DUPLICATE',
 } as const;
 
-export type Status = (typeof StatusEnum)[keyof typeof StatusEnum];
-
-/** Statuses that count as "open" for clustering purposes */
-export const OPEN_STATUSES: ReadonlySet<Status> = new Set([
-  StatusEnum.SUBMITTED,
-  StatusEnum.ACKNOWLEDGED,
-  StatusEnum.ASSIGNED,
-  StatusEnum.IN_PROGRESS,
-  StatusEnum.REOPENED,
-]);
-
-/** Terminal statuses — no further transitions */
-export const TERMINAL_STATUSES: ReadonlySet<Status> = new Set([
-  StatusEnum.VERIFIED,
-  StatusEnum.REJECTED,
-  StatusEnum.DUPLICATE,
-]);
-
-// ─── Department Enum (4 members) ────────────────────────────────────────────
-
-export const DepartmentEnum = {
-  SANITATION: 'SANITATION',
-  PUBLIC_WORKS: 'PUBLIC_WORKS',
+export const CategoryEnum = {
+  POTHOLE: 'POTHOLE',
+  STREETLIGHT: 'STREETLIGHT',
+  GARBAGE: 'GARBAGE',
+  WATER_LEAK: 'WATER_LEAK',
+  FOOTPATH: 'FOOTPATH',
+  DRAIN_MANHOLE: 'DRAIN_MANHOLE',
   ELECTRICAL: 'ELECTRICAL',
-  WATER_DRAINAGE: 'WATER_DRAINAGE',
+  STRUCTURAL: 'STRUCTURAL',
+  OTHER: 'OTHER',
 } as const;
-
-export type Department = (typeof DepartmentEnum)[keyof typeof DepartmentEnum];
-
-// ─── Severity Self-Report (citizen's own read, advisory only) ───────────────
-
-export const SeverityEnum = {
-  MINOR: 'MINOR',
-  MODERATE: 'MODERATE',
-  SEVERE: 'SEVERE',
-} as const;
-
-export type Severity = (typeof SeverityEnum)[keyof typeof SeverityEnum];
-
-// ─── Priority Tiers ─────────────────────────────────────────────────────────
-// Score bands for UI colour only. The score itself is the ranking.
-// Thresholds from ENUMS.md: calibrated against the PRD formula's real range.
 
 export const PriorityTierEnum = {
   CRITICAL: 'CRITICAL',
@@ -91,18 +76,14 @@ export const PriorityTierEnum = {
   LOW: 'LOW',
 } as const;
 
-export type PriorityTier =
-  (typeof PriorityTierEnum)[keyof typeof PriorityTierEnum];
-
-/** Score thresholds — score >= threshold maps to that tier */
-export const PRIORITY_THRESHOLDS: Record<
-  Exclude<PriorityTier, 'LOW'>,
-  number
-> = {
-  CRITICAL: 20,
-  HIGH: 14,
-  MEDIUM: 8,
+export const DepartmentEnum = {
+  SANITATION: 'SANITATION',
+  PUBLIC_WORKS: 'PUBLIC_WORKS',
+  ELECTRICAL: 'ELECTRICAL',
+  WATER_DRAINAGE: 'WATER_DRAINAGE',
 } as const;
+
+export type { Category, Status, Department, Severity, PriorityTier };
 
 // ─── Priority Weights ───────────────────────────────────────────────────────
 // PRD §7: starting weights, tunable once real data exists

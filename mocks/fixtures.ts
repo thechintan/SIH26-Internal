@@ -39,6 +39,7 @@ import type {
   ReportDetail,
   TimelineEntry,
 } from '../lib/contracts/report';
+import { computePriority } from '../lib/engine';
 
 /* ── deterministic RNG ────────────────────────────────────────────────────── */
 
@@ -107,45 +108,7 @@ function jitter(lat: number, lng: number, metres: number) {
  * realistically-shaped breakdown to render before C lands. When C publishes the
  * real shape, this is deleted, not kept in parallel.
  */
-function breakdown(
-  category: Category,
-  reporters: number,
-  ageDays: number,
-  recurring: boolean,
-): PriorityBreakdown {
-  const sev = CATEGORY_SEVERITY_SEED[category];
-  const recurInput = recurring ? RECURRENCE_BONUS : 0;
-  const terms = {
-    severity: { input: sev, weighted: PRIORITY_WEIGHTS.severity * sev },
-    reports: {
-      input: reporters,
-      weighted: PRIORITY_WEIGHTS.reports * Math.log(1 + reporters),
-    },
-    age: { input: ageDays, weighted: PRIORITY_WEIGHTS.age * ageDays },
-    recurrence: {
-      input: recurInput,
-      weighted: PRIORITY_WEIGHTS.recurrence * recurInput,
-    },
-  };
-  const total =
-    terms.severity.weighted +
-    terms.reports.weighted +
-    terms.age.weighted +
-    terms.recurrence.weighted;
-
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-  return {
-    severity: { input: terms.severity.input, weighted: round2(terms.severity.weighted) },
-    reports: { input: terms.reports.input, weighted: round2(terms.reports.weighted) },
-    age: { input: round2(terms.age.input), weighted: round2(terms.age.weighted) },
-    recurrence: {
-      input: terms.recurrence.input,
-      weighted: round2(terms.recurrence.weighted),
-    },
-    total: round2(total),
-    computed_at: new Date().toISOString(),
-  };
-}
+// breakdown function deleted — using computePriority from lib/engine instead.
 
 /* ── builders ─────────────────────────────────────────────────────────────── */
 
@@ -174,7 +137,12 @@ function makeIncident(i: number): IncidentDetail {
   const status: Status = resolved ? 'RESOLVED' : pick(OPEN_STATUSES);
 
   const centroid = jitter(CITY.lat, CITY.lng, 6000);
-  const bd = breakdown(category, reporters, ageDays, recurring);
+  const bd = computePriority({
+    category,
+    uniqueUserCount: reporters,
+    daysOpen: ageDays,
+    previousIncidentId: recurring ? 'dummy-id' : null,
+  });
   const department: Department | null = CATEGORY_DEPARTMENT[category];
   const address = `${intBetween(1, 240)}, ${pick(STREETS)}`;
 
@@ -222,8 +190,8 @@ function makeIncident(i: number): IncidentDetail {
     report_count: reporters,
     status,
     department,
-    priority_score: bd.total,
-    priority_tier: priorityTier(bd.total),
+    priority_score: bd.score,
+    priority_tier: bd.tier,
     manual_override: rand() < 0.05,
     first_reported_at: daysAgo(ageDays),
     age_days: ageDays,
@@ -320,4 +288,4 @@ export const PUBLIC_STATS = {
   resolved_total: INCIDENTS.filter((i) => i.status === 'RESOLVED').length,
 };
 
-export { breakdown as mockBreakdown, uuid as mockUuid, ticketId as mockTicketId };
+export { computePriority as mockBreakdown, uuid as mockUuid, ticketId as mockTicketId };
