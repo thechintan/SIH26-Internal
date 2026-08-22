@@ -8,7 +8,7 @@ import {
   CATEGORIES, CATEGORY_LABEL,
   DEPARTMENTS, DEPARTMENT_LABEL,
   STATUSES, PRIORITY_TIERS,
-  type Department, type Status, type PriorityTier,
+  type Status, type PriorityTier,
 } from '../../lib/contracts/enums';
 import type { IncidentSummary } from '../../lib/contracts/incident';
 import { TIER_COLORS, STATUS_COLORS, CATEGORY_ICONS } from './_lib/constants';
@@ -89,7 +89,7 @@ export default function AdminCommandCenter() {
   const [filterDept, setFilterDept]         = useState('');
   const [filterTier, setFilterTier]         = useState('');
   const [sort, setSort]                     = useState('priority');
-  const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
+
 
   /* Filtered + sorted rows */
   const incidents = useMemo(() => {
@@ -114,12 +114,6 @@ export default function AdminCommandCenter() {
   const resolved     = all.filter(i => i.status === 'RESOLVED').length;
   const avgAge       = all.length ? (all.reduce((s, i) => s + i.age_days, 0) / all.length).toFixed(1) : '0';
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => {
-    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
-  const toggleAll = () => setSelectedIds(
-    selectedIds.size === incidents.length ? new Set() : new Set(incidents.map(i => i.incident_id))
-  );
 
   const sel = { background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)', borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--admin-text-primary)', outline: 'none', cursor: 'pointer', appearance: 'none' as const };
 

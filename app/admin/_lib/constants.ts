@@ -6,11 +6,11 @@ import type { PriorityTier, Status, Category } from '../../../lib/contracts/enum
 
 /* ── Priority tier → badge style ─────────────────────────────────────────── */
 
-export const TIER_COLORS: Record<PriorityTier, { bg: string; text: string; border: string }> = {
-  CRITICAL: { bg: 'var(--bg-semantic-danger)', text: 'var(--color-semantic-danger)', border: 'var(--color-semantic-danger)' },
-  HIGH:     { bg: 'var(--bg-semantic-warning)', text: 'var(--color-semantic-warning)', border: 'var(--color-semantic-warning)' },
-  MEDIUM:   { bg: 'var(--bg-semantic-info)', text: 'var(--color-semantic-info)', border: 'var(--color-semantic-info)' },
-  LOW:      { bg: 'var(--admin-bg-active)', text: 'var(--admin-text-secondary)', border: 'var(--admin-border)' },
+export const TIER_COLORS: Record<PriorityTier, { bg: string; text: string; border: string; dot: string }> = {
+  CRITICAL: { bg: 'var(--bg-semantic-danger)', text: 'var(--color-semantic-danger)', border: 'var(--color-semantic-danger)', dot: 'var(--bg-semantic-danger)' },
+  HIGH:     { bg: 'var(--bg-semantic-warning)', text: 'var(--color-semantic-warning)', border: 'var(--color-semantic-warning)', dot: 'var(--bg-semantic-warning)' },
+  MEDIUM:   { bg: 'var(--bg-semantic-info)', text: 'var(--color-semantic-info)', border: 'var(--color-semantic-info)', dot: 'var(--bg-semantic-info)' },
+  LOW:      { bg: 'var(--admin-bg-active)', text: 'var(--admin-text-secondary)', border: 'var(--admin-border)', dot: 'var(--admin-bg-active)' },
 };
 
 /* ── Status → badge style ────────────────────────────────────────────────── */
