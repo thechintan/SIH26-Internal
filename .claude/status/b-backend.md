@@ -99,6 +99,13 @@ Things I changed that affect other people. Delete once everyone has pulled.
   `db.auth.signInWithPassword({ email, password })` for a returning one. Session
   is picked up automatically by every subsequent API call. The comment block in
   `lib/supabase/client.ts` has the shape.
+- **@D — your admin pages are on the old `PriorityBreakdown` shape.** C aligned
+  it to nested `factors.severity.weighted`, `factors.reportCount.weighted`,
+  `factors.age.weighted`, `factors.recurrence.weighted` (plus `score` and `tier`
+  at the top level). `app/admin/incidents/[id]/page.tsx` still reads
+  `breakdown.severity` / `.reports` / `.age` / `.recurrence` — 10+ `tsc` errors.
+  Also `app/admin/analytics/page.tsx:189` uses `<cell>`, Recharts wants `<Cell>`.
+  Blocks: `next build`. I have not touched your files.
 - **Live database has 777 reports / 267 incidents (2.91×)** → affects C and D →
   the seed ran. Top incident has 17 unique reporters at SG Highway underpass.
   Every `priority_score` is 0 until the rescoring cron runs; the queue will be

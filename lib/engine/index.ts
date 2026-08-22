@@ -26,13 +26,14 @@ export {
   CategoryEnum,
   StatusEnum,
   DepartmentEnum,
-  SeverityEnum,
   PriorityTierEnum,
   PRIORITY_THRESHOLDS,
   DEFAULT_WEIGHTS,
   OPEN_STATUSES,
   TERMINAL_STATUSES,
 } from './types';
+// SeverityEnum used to be re-exported here; types.ts now re-uses SeveritySelf
+// from lib/contracts directly, so there is no second declaration to expose.
 
 // Severity
 export { getSeverity, DEFAULT_SEVERITY_MAP } from './severity';

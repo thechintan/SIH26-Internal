@@ -36,7 +36,6 @@ import {
   DepartmentEnum,
   PRIORITY_THRESHOLDS,
   PriorityTierEnum,
-  SeverityEnum,
   StatusEnum,
   routeToDepartment,
 } from '../lib/engine';
@@ -147,7 +146,10 @@ function checkEnum(label: string, contract: readonly string[], engine: readonly 
 checkEnum('Category', CATEGORIES, Object.values(CategoryEnum));
 checkEnum('Status', STATUSES, Object.values(StatusEnum));
 checkEnum('Department', DEPARTMENTS, Object.values(DepartmentEnum));
-checkEnum('Severity self-report', SEVERITY_SELF, Object.values(SeverityEnum));
+// Severity self-report is now imported directly from lib/contracts by the
+// engine (types.ts re-uses SeveritySelf), so there is no second declaration
+// to drift from. No check needed here.
+void SEVERITY_SELF;
 checkEnum('Priority tier', PRIORITY_TIERS, Object.values(PriorityTierEnum));
 
 check('priority tier thresholds agree', () => {
