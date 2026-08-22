@@ -1,8 +1,8 @@
 ---
 owner: Brinda
 workstream: D admin
-last_sync: 2026-08-22T05:34:00+05:30
-head: c3e5fd9
+last_sync: 2026-08-22T07:23:00+05:30
+head: 0c0f06c
 ---
 
 # D admin — Brinda
@@ -31,6 +31,9 @@ Started, not safe to depend on yet.
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
 - **Cursor paging confirmed** → affects E (Durgesh) → cursor paging (`?cursor=&limit=`) is correct for `GET /api/incidents`. Offset paging would shift rows every 5 min when cron rewrites `priority_score`. Confirmed, no change needed.
+- **PriorityBreakdown shape fixed** → affects B (Durgesh) and C (Chintan) → I've updated `app/admin/incidents/[id]/page.tsx` to read the new nested `breakdown.factors.*` shape instead of the old flat shape. Build errors are gone.
+- **Recharts typo fixed** → affects B (Durgesh) → I've fixed the `<Cell>` capitalization in `app/admin/analytics/page.tsx`. Build errors are gone.
+- **Decision 005 (Auth)** → acknowledged. Admin login was always email/password, so our UI requires no changes.
 
 ## Notes for my own agent
 
