@@ -1,12 +1,12 @@
 'use client';
 
-import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Camera, Loader2 } from 'lucide-react';
 import { useState, useRef } from 'react';
 import imageCompression from 'browser-image-compression';
 import { useReportWizard } from '../report-context';
 
 export default function Step1Photo() {
-  const { data, updateData, nextStep } = useReportWizard();
+  const { updateData, nextStep } = useReportWizard();
   const [isCompressing, setIsCompressing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

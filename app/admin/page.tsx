@@ -10,7 +10,6 @@ import {
   DEPARTMENT_LABEL,
   STATUSES,
   PRIORITY_TIERS,
-  type Category,
   type Department,
   type Status,
   type PriorityTier,

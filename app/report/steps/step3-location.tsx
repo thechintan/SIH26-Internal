@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2, MapPin, Navigation } from 'lucide-react';
+import { Loader2, Navigation } from 'lucide-react';
 import { useReportWizard } from '../report-context';
 import type { GeoPoint } from '@/lib/contracts/common';
 

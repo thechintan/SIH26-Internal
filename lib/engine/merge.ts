@@ -16,7 +16,6 @@ import {
   type GeoPoint,
   type MergeValidation,
   type MergedIncidentData,
-  StatusEnum,
   TERMINAL_STATUSES,
 } from './types';
 

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   routeToDepartment,
   getCategoriesForDepartment,
-  CATEGORY_DEPARTMENT_MAP,
 } from '../routing';
 import { CategoryEnum, DepartmentEnum } from '../types';
 

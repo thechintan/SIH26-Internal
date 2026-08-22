@@ -19,6 +19,7 @@ import {
   CATEGORIES,
   CATEGORY_DEPARTMENT,
   CATEGORY_SEVERITY_SEED,
+  CATEGORY_LABEL,
   CLUSTER_BASE_RADIUS_M,
   PRIORITY_WEIGHTS,
   RECURRENCE_BONUS,
@@ -116,9 +117,43 @@ const OPEN_STATUSES: Status[] = [
   'SUBMITTED', 'ACKNOWLEDGED', 'ASSIGNED', 'IN_PROGRESS',
 ];
 
+/**
+ * Category-tinted SVG placeholder, inlined as a data URI.
+ *
+ * The real system stores photos in Supabase Storage and B resolves signed URLs
+ * on the read path. Until that lands, A and D still need every <img> to render
+ * something — a bare `/mock/photos/*.jpg` path 404s and paints broken-image
+ * icons across the queue, the report cards and the galleries. A self-contained
+ * data URI always resolves, works offline, and is deterministic. Swap `photo()`
+ * for the signed-URL helper once B ships it; nothing else changes.
+ */
+const CATEGORY_VISUAL: Record<Category, { emoji: string; from: string; to: string }> = {
+  STRUCTURAL: { emoji: '🏗️', from: '#f59e0b', to: '#b45309' },
+  ELECTRICAL: { emoji: '⚡', from: '#eab308', to: '#a16207' },
+  DRAIN_MANHOLE: { emoji: '🕳️', from: '#64748b', to: '#334155' },
+  WATER_LEAK: { emoji: '💧', from: '#38bdf8', to: '#0369a1' },
+  POTHOLE: { emoji: '🛣️', from: '#71717a', to: '#3f3f46' },
+  FOOTPATH: { emoji: '🚶', from: '#34d399', to: '#047857' },
+  GARBAGE: { emoji: '🗑️', from: '#a3e635', to: '#4d7c0f' },
+  STREETLIGHT: { emoji: '💡', from: '#fbbf24', to: '#b45309' },
+  OTHER: { emoji: '📍', from: '#818cf8', to: '#4338ca' },
+};
+
 function photo(category: Category, n: number): string {
-  // Deterministic placeholder; swap for real Supabase Storage paths once B lands.
-  return `/mock/photos/${category.toLowerCase()}-${n}.jpg`;
+  const v = CATEGORY_VISUAL[category] ?? CATEGORY_VISUAL.OTHER;
+  const isResolution = n >= 99;
+  const caption = isResolution ? 'Resolved' : CATEGORY_LABEL[category];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="${v.from}"/><stop offset="1" stop-color="${v.to}"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="400" height="300" fill="url(#g)"/>` +
+    `<text x="200" y="148" font-size="104" text-anchor="middle" dominant-baseline="central">${v.emoji}</text>` +
+    `<text x="200" y="244" font-size="20" font-family="system-ui,sans-serif" font-weight="700" fill="#fff" text-anchor="middle" opacity="0.95">${caption}</text>` +
+    `<text x="200" y="272" font-size="12" font-family="system-ui,sans-serif" fill="#fff" text-anchor="middle" opacity="0.7">Demo photo #${n}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function makeIncident(i: number): IncidentDetail {

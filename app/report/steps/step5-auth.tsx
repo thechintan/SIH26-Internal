@@ -46,8 +46,8 @@ export default function Step5Auth() {
       }
 
       nextStep(); // Proceed to review & submit
-    } catch (err: any) {
-      setError(err?.message || 'Authentication failed. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

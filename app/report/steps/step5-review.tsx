@@ -18,10 +18,14 @@ export default function Step5Review() {
       const uploadRes = await fetch('/api/uploads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: data.imageFile?.name || 'photo.jpg', contentType: data.imageFile?.type || 'image/jpeg' }),
+        body: JSON.stringify({
+          kind: 'REPORT_PHOTO',
+          content_type: data.imageFile?.type || 'image/jpeg',
+          size_bytes: data.imageFile?.size || 1,
+        }),
       });
       if (!uploadRes.ok) throw new Error('Failed to get upload URL');
-      const { url: presignedUrl, path: storagePath } = await uploadRes.json();
+      const { upload_url: presignedUrl, path: storagePath } = await uploadRes.json();
 
       // 2. Upload image
       if (data.imageFile) {
@@ -77,9 +81,9 @@ export default function Step5Review() {
             <div className="bg-blue-50 text-blue-800 p-4 rounded-xl flex gap-3 text-left">
               <AlertTriangle className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
               <div className="text-sm">
-                <p className="font-semibold">You're not alone.</p>
+                <p className="font-semibold">You&apos;re not alone.</p>
                 <p className="opacity-90 mt-1">
-                  {successResponse.report_count - 1} other {successResponse.report_count - 1 === 1 ? 'person has' : 'people have'} already reported this issue. We've added your report to the existing ticket to boost its priority.
+                  {successResponse.report_count - 1} other {successResponse.report_count - 1 === 1 ? 'person has' : 'people have'} already reported this issue. We&apos;ve added your report to the existing ticket to boost its priority.
                 </p>
               </div>
             </div>

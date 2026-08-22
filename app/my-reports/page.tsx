@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { MapPin, Clock, Users, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
-import { CATEGORY_LABEL, type Category, type Status } from '@/lib/contracts/enums';
+import { CATEGORY_LABEL, type Status } from '@/lib/contracts/enums';
 import type { MyReportListItem } from '@/lib/contracts/report';
 
 const STATUS_COLOR: Record<Status, string> = {

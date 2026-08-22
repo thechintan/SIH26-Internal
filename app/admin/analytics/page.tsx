@@ -3,7 +3,7 @@
 import React from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, LineChart, Line, ComposedChart, Cell
+  BarChart, Bar, Legend, Line, ComposedChart, Cell
 } from 'recharts';
 
 /* ── Mock Data for Analytics ──────────────────────────────────────────────── */
@@ -35,22 +35,24 @@ const SLA_COMPLIANCE_DATA = [
   { name: 'LOW', compliance: 82, target: 70 },
 ];
 
-const CATEGORY_DIST_DATA = [
-  { name: 'Pothole', count: 450 },
-  { name: 'Garbage', count: 320 },
-  { name: 'Water Leak', count: 210 },
-  { name: 'Streetlight', count: 180 },
-  { name: 'Drain/Manhole', count: 150 },
-];
-
 /* ── Custom Tooltip ───────────────────────────────────────────────────────── */
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+type TooltipEntry = { color?: string; name?: string | number; value?: string | number };
+
+const CustomTooltip = ({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+}) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-[#111827]/90 backdrop-blur-md border border-white/[0.08] p-3 rounded-lg shadow-xl text-xs">
         <div className="font-semibold text-slate-200 mb-2">{label}</div>
-        {payload.map((entry: any, i: number) => (
+        {payload.map((entry: TooltipEntry, i: number) => (
           <div key={i} className="flex items-center gap-2 text-slate-300 py-0.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
             <span>{entry.name}:</span>

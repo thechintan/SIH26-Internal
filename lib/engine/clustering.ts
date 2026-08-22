@@ -25,7 +25,6 @@ import {
   type Status,
   type GeoPoint,
   type ClusteringResult,
-  StatusEnum,
   OPEN_STATUSES,
 } from './types';
 

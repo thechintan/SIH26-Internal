@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
-  MapPin,
   Shield,
   AlertTriangle,
   Loader2,
@@ -108,7 +107,7 @@ function VerificationPrompt({ reportId, onDone }: { reportId: string; onDone: ()
       if (!res.ok) throw new Error('Verification failed');
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['report', reportId] });
       onDone();
     },
