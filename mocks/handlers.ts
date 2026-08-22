@@ -58,7 +58,10 @@ function json<T extends z.ZodTypeAny>(schema: T, body: unknown, status = 200) {
       { status: 500 },
     );
   }
-  return HttpResponse.json(parsed.data, { status });
+  // A generic Zod output is `unknown` to TypeScript, which JsonBodyType will not
+  // accept. The runtime guarantee is the parse immediately above: nothing reaches
+  // this line that has not just been validated against the contract.
+  return HttpResponse.json(parsed.data as Record<string, unknown>, { status });
 }
 
 function badRequest(error: z.ZodError) {

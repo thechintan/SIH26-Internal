@@ -45,6 +45,10 @@ Works, pushed, safe for others to build on.
   service key is ever reached from browser code), `admin.ts` (service role,
   bypasses RLS, server only), `client.ts` (browser, carries the citizen session),
   `request.ts` (`getCaller()` — runs queries as the caller so RLS applies).
+- **`app/api/**`** — all nine route files, wired to `lib/api`. `tsc --noEmit` is
+  clean and `next build` compiles them without error.
+- **`lib/supabase/rows.ts`** — hand-written row types for every table the API
+  selects, so nothing under `lib/api` falls back to `any`.
 - **`lib/api/`** — every endpoint's logic as plain `Request → Response`
   functions: `reports.ts`, `incidents.ts`, `uploads.ts`, `respond.ts`, and
   `clustering.ts`. Testable without a Next server; the route files under
@@ -60,6 +64,10 @@ Started, not safe to depend on yet.
 - Vercel Cron endpoint for rescoring — after the routes
 
 ## I need from you
+- **@Dev (A)** — `next build` fails on `app/my-reports/page.tsx:7`. An unescaped
+  apostrophe in "citizen's" trips `react/no-unescaped-entities`, and Next treats
+  lint errors as build failures. One character: `&apos;`. Blocks: every Vercel
+  deploy. It is your file and you are live in it, so I have not touched it.
 - **@Durgesh (human, not an agent task)** — create the Supabase project, enable
   PostGIS, and put `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. I cannot create accounts or
@@ -77,6 +85,11 @@ Started, not safe to depend on yet.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
+- **`react-leaflet` pinned to ^4.2.1 in `package.json`** → affects Dev and D →
+  `npm install` failed outright on `main`: v5 requires React 19, and the scaffold
+  is React 18 on Next 14. v4 is the React 18 line and the API is the same. Re-run
+  `npm install` after pulling. I edited a shared file without posting first
+  because nobody could install anything at all until it was fixed.
 - **Schema landed** → affects C and D → the table and column names in
   `0001_init.sql` are what the API will return. Read it before writing queries.
 - **`lib/api/clustering.ts` is C's work sitting in B's folder** → affects C →

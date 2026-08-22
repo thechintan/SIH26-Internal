@@ -28,8 +28,25 @@ import {
   type Status,
 } from '../contracts/enums';
 import { supabaseAdmin } from '../supabase/admin';
+import {
+  embeddedOne,
+  type IncidentDetailRow,
+  type IncidentReportRow,
+  type IncidentRow,
+  type RecurrenceRow,
+  type StatusHistoryRow,
+  type UserRow,
+  type VerificationRow,
+} from '../supabase/rows';
 import { getCaller, isAdmin, isStaff } from '../supabase/request';
 import { fail, ok, parseBody, parseQuery } from './respond';
+
+/** Shape of the public_stats() RPC result. */
+type PublicStatsRow = {
+  reports_total: number;
+  incidents_total: number;
+  resolved_total: number;
+};
 
 const DAY_MS = 86_400_000;
 const ageDays = (iso: string) => (Date.now() - Date.parse(iso)) / DAY_MS;
@@ -42,14 +59,14 @@ const SUMMARY_SELECT = `
   wards ( name )
 `;
 
-function toSummary(row: any, thumbnail: string | null = null): IncidentSummary {
+function toSummary(row: IncidentRow, thumbnail: string | null = null): IncidentSummary {
   return {
     incident_id: row.id,
     category: row.category,
     thumbnail_url: thumbnail,
     centroid: { lat: row.centroid_lat, lng: row.centroid_lng },
     address: row.address ?? 'Location pinned',
-    ward_name: row.wards?.name ?? null,
+    ward_name: embeddedOne(row.wards)?.name ?? null,
     report_count: row.report_count,
     status: row.status,
     department: row.department ?? null,
@@ -58,7 +75,7 @@ function toSummary(row: any, thumbnail: string | null = null): IncidentSummary {
     manual_override: row.manual_override,
     first_reported_at: row.first_reported_at,
     age_days: Math.round(ageDays(row.first_reported_at) * 10) / 10,
-    flagged_mismatch: row.flagged_mismatch ?? false,
+    flagged_mismatch: row.flagged_mismatch,
     is_recurrence: Boolean(row.previous_incident_id),
   };
 }
@@ -102,7 +119,7 @@ export async function listIncidents(request: Request): Promise<Response> {
   };
   query = order[q.sort]();
 
-  const { data, error, count } = await query.range(from, from + q.limit - 1);
+  const { data, error, count } = await query.range(from, from + q.limit - 1).returns<IncidentRow[]>();
   if (error) {
     console.error('[api] incident list failed:', error);
     return fail('INTERNAL', 'Could not load the queue');
@@ -135,7 +152,7 @@ export async function getIncident(request: Request, incidentId: string): Promise
        resolved_at, resolution_photo_url`,
     )
     .eq('id', incidentId)
-    .maybeSingle();
+    .maybeSingle<IncidentDetailRow>();
 
   if (error) return fail('INTERNAL', 'Could not load the incident');
   if (!row) return fail('NOT_FOUND', 'Incident not found');
@@ -151,82 +168,87 @@ export async function getIncident(request: Request, incidentId: string): Promise
        severity_self, voice_note_url, created_at`,
     )
     .eq('incident_id', incidentId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .returns<IncidentReportRow[]>();
 
   const { data: history } = await admin
     .from('status_history')
     .select('from_status, to_status, at, note, users ( full_name )')
     .eq('incident_id', incidentId)
-    .order('at', { ascending: true });
+    .order('at', { ascending: true })
+    .returns<StatusHistoryRow[]>();
 
-  const { data: assignee } = (row as any).assigned_to
-    ? await admin.from('users').select('id, full_name').eq('id', (row as any).assigned_to).maybeSingle()
+  const { data: assignee } = row.assigned_to
+    ? await admin
+        .from('users')
+        .select('id, full_name')
+        .eq('id', row.assigned_to)
+        .maybeSingle<Pick<UserRow, 'id' | 'full_name'>>()
     : { data: null };
 
   const { data: votes } = await admin
     .from('report_verifications')
     .select('fixed')
-    .eq('incident_id', incidentId);
+    .eq('incident_id', incidentId)
+    .returns<VerificationRow[]>();
 
   // Walk the recurrence chain back. Three links at one location means the
   // infrastructure needs replacing, not patching — which is the difference
   // between a ticket queue and infrastructure intelligence.
   const chain: IncidentDetail['recurrence_chain'] = [];
-  let previousId: string | null = (row as any).previous_incident_id ?? null;
+  let previousId: string | null = row.previous_incident_id;
   while (previousId && chain.length < 10) {
-    const { data: prev }: { data: any } = await admin
+    const { data: prev } = await admin
       .from('incidents')
       .select('id, first_reported_at, resolved_at, previous_incident_id')
       .eq('id', previousId)
-      .maybeSingle();
+      .maybeSingle<RecurrenceRow>();
     if (!prev) break;
     chain.push({
       incident_id: prev.id,
       first_reported_at: prev.first_reported_at,
-      resolved_at: prev.resolved_at ?? null,
+      resolved_at: prev.resolved_at,
     });
-    previousId = prev.previous_incident_id ?? null;
+    previousId = prev.previous_incident_id;
   }
 
   const consensus = { MINOR: 0, MODERATE: 0, SEVERE: 0 };
-  for (const r of reports ?? []) {
-    consensus[(r as any).severity_self as keyof typeof consensus]++;
-  }
+  for (const r of reports ?? []) consensus[r.severity_self]++;
 
-  const fixed = (votes ?? []).filter((v: any) => v.fixed === true).length;
-  const notFixed = (votes ?? []).filter((v: any) => v.fixed === false).length;
+  const fixed = (votes ?? []).filter((v) => v.fixed === true).length;
+  const notFixed = (votes ?? []).filter((v) => v.fixed === false).length;
 
   const detail: IncidentDetail = {
-    ...toSummary(row, (reports?.[0] as any)?.photo_url ?? null),
-    priority_breakdown: ((row as any).priority_breakdown as IncidentDetail['priority_breakdown']) ?? null,
-    reports: (reports ?? []).map((r: any) => ({
+    ...toSummary(row, reports?.[0]?.photo_url ?? null),
+    priority_breakdown: row.priority_breakdown,
+    reports: (reports ?? []).map((r) => ({
       report_id: r.id,
       ticket_id: r.ticket_id,
       photo_url: r.photo_url,
       location: { lat: r.lat, lng: r.lng },
       gps_accuracy_m: r.gps_accuracy_m,
-      description: r.description ?? null,
+      description: r.description,
       severity_self: r.severity_self,
-      voice_note_url: r.voice_note_url ?? null,
+      voice_note_url: r.voice_note_url,
       created_at: r.created_at,
     })),
     severity_consensus: consensus,
-    status_history: (history ?? []).map((h: any) => ({
-      from_status: h.from_status ?? null,
+    status_history: (history ?? []).map((h) => ({
+      from_status: h.from_status,
       to_status: h.to_status,
       at: h.at,
-      actor_name: h.users?.full_name ?? null,
-      note: h.note ?? null,
+      actor_name: embeddedOne(h.users)?.full_name ?? null,
+      note: h.note,
     })),
     assigned_to: assignee ? { user_id: assignee.id, name: assignee.full_name ?? 'Unnamed' } : null,
-    sla_due_at: (row as any).sla_due_at ?? null,
+    sla_due_at: row.sla_due_at,
     recurrence_chain: chain,
-    resolved_at: (row as any).resolved_at ?? null,
-    resolution_photo_url: (row as any).resolution_photo_url ?? null,
+    resolved_at: row.resolved_at,
+    resolution_photo_url: row.resolution_photo_url,
     verification: {
       fixed: fixed,
       not_fixed: notFixed,
-      pending: Math.max(0, ((row as any).report_count ?? 0) - fixed - notFixed),
+      pending: Math.max(0, row.report_count - fixed - notFixed),
     },
   };
 
@@ -249,7 +271,7 @@ export async function updateIncident(request: Request, incidentId: string): Prom
     .from('incidents')
     .select('id, status, department, assigned_to, resolution_photo_url')
     .eq('id', incidentId)
-    .maybeSingle();
+    .maybeSingle<Pick<IncidentDetailRow, 'id' | 'status' | 'department' | 'assigned_to' | 'resolution_photo_url'>>();
   if (!current) return fail('NOT_FOUND', 'Incident not found');
 
   // Field staff move their own work forward and nothing else. Reassignment,
@@ -260,7 +282,7 @@ export async function updateIncident(request: Request, incidentId: string): Prom
     if (attempted.length) {
       return fail('FORBIDDEN', `Field staff cannot change: ${attempted.join(', ')}`);
     }
-    if ((current as any).assigned_to !== caller.userId) {
+    if (current.assigned_to !== caller.userId) {
       return fail('FORBIDDEN', 'This incident is not assigned to you');
     }
   }
@@ -272,13 +294,13 @@ export async function updateIncident(request: Request, incidentId: string): Prom
   const update: Record<string, unknown> = {};
 
   if (patch.status) {
-    const from = (current as any).status as Status;
+    const from: Status = current.status;
     // Checked here for a clean 409 with a readable message; the database trigger
     // checks it again, because the API is not the only writer.
     if (!canTransition(from, patch.status)) {
       return fail('ILLEGAL_TRANSITION', `${from} cannot move to ${patch.status}`);
     }
-    const photo = patch.resolution_photo_url ?? (current as any).resolution_photo_url;
+    const photo = patch.resolution_photo_url ?? current.resolution_photo_url;
     if (patch.status === 'RESOLVED' && !photo) {
       return fail('VALIDATION_FAILED', 'A resolution photo is required before resolving', {
         fields: { resolution_photo_url: 'Required' },
@@ -351,24 +373,25 @@ export async function mergeIncidents(request: Request): Promise<Response> {
     .from('incidents')
     .select('id, category')
     .eq('id', target_incident_id)
-    .maybeSingle();
+    .maybeSingle<Pick<IncidentRow, 'id' | 'category'>>();
   if (!target) return fail('NOT_FOUND', 'Target incident not found');
 
   const { data: sources } = await admin
     .from('incidents')
     .select('id, category')
-    .in('id', source_incident_ids);
+    .in('id', source_incident_ids)
+    .returns<Pick<IncidentRow, 'id' | 'category'>[]>();
 
   // Merging across categories would silently destroy the same-category rule that
   // keeps a pothole and a broken streetlight on one corner as two incidents.
-  const mismatched = (sources ?? []).filter((s: any) => s.category !== (target as any).category);
+  const mismatched = (sources ?? []).filter((s) => s.category !== target.category);
   if (mismatched.length) {
     return fail('CONFLICT', 'All merged incidents must share the same category');
   }
 
   let merged = 0;
   for (const source of sources ?? []) {
-    const id = (source as any).id as string;
+    const id = source.id;
 
     await admin.from('reports').update({ incident_id: target_incident_id }).eq('incident_id', id);
 
@@ -376,12 +399,13 @@ export async function mergeIncidents(request: Request): Promise<Response> {
     const { data: reporters } = await admin
       .from('incident_reporters')
       .select('user_id')
-      .eq('incident_id', id);
+      .eq('incident_id', id)
+      .returns<{ user_id: string }[]>();
     for (const r of reporters ?? []) {
       await admin
         .from('incident_reporters')
         .upsert(
-          { incident_id: target_incident_id, user_id: (r as any).user_id },
+          { incident_id: target_incident_id, user_id: r.user_id },
           { onConflict: 'incident_id,user_id', ignoreDuplicates: true },
         );
     }
@@ -397,12 +421,12 @@ export async function mergeIncidents(request: Request): Promise<Response> {
     .from('incidents')
     .select('report_count')
     .eq('id', target_incident_id)
-    .single();
+    .single<Pick<IncidentRow, 'report_count'>>();
 
   const response: MergeIncidentsResponse = {
     target_incident_id,
     merged_count: merged,
-    report_count: (updated as any)?.report_count ?? 0,
+    report_count: updated?.report_count ?? 0,
   };
   return ok(response);
 }
@@ -416,11 +440,11 @@ export async function getPublicStats(): Promise<Response> {
     console.error('[api] stats failed:', error);
     return fail('INTERNAL', 'Could not load the counters');
   }
-  const row = (data as any)?.[0] ?? {};
+  const row = (data as PublicStatsRow[] | null)?.[0];
   const stats: PublicStats = {
-    reports_total: Number(row.reports_total ?? 0),
-    incidents_total: Number(row.incidents_total ?? 0),
-    resolved_total: Number(row.resolved_total ?? 0),
+    reports_total: Number(row?.reports_total ?? 0),
+    incidents_total: Number(row?.incidents_total ?? 0),
+    resolved_total: Number(row?.resolved_total ?? 0),
   };
   return ok(stats);
 }

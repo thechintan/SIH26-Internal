@@ -2,8 +2,8 @@
  * Report endpoints — the citizen side of the API.
  *
  * Owner: B (backend). These are plain `Request → Response` functions so they can
- * be unit-tested without a Next.js server. Once A's scaffold lands, the route
- * files under `app/api/**` are three-line re-exports of these.
+ * be unit-tested without a Next.js server; the route files under `app/api/**`
+ * are three-line re-exports.
  *
  *   POST   /api/reports              submit a report, get the clustering result
  *   GET    /api/my-reports           the citizen's own reports
@@ -23,11 +23,16 @@ import { PageQuerySchema } from '../contracts/common';
 import {
   REPORT_RATE_LIMIT_PER_HOUR,
   REOPEN_THRESHOLD,
-  type Department,
   type Status,
 } from '../contracts/enums';
 import { supabaseAdmin } from '../supabase/admin';
 import { getCaller } from '../supabase/request';
+import {
+  embeddedOne,
+  type ReportWithIncidentRow,
+  type StatusHistoryRow,
+  type VerificationRow,
+} from '../supabase/rows';
 import { fail, ok, parseBody, parseQuery } from './respond';
 import { clusterReport } from './clustering';
 
@@ -41,8 +46,8 @@ export async function createReport(request: Request): Promise<Response> {
   if ('response' in parsed) return parsed.response;
   const body = parsed.data;
 
-  // Rate limit counted in the database, not in memory. Serverless invocations
-  // do not share state, so an in-process counter on Vercel limits nothing.
+  // Rate limit counted in the database, not in memory. Serverless invocations do
+  // not share state, so an in-process counter on Vercel limits nothing at all.
   const admin = supabaseAdmin();
   const { data: recent, error: rateErr } = await admin.rpc('report_count_last_hour', {
     p_user_id: caller.userId,
@@ -58,7 +63,7 @@ export async function createReport(request: Request): Promise<Response> {
 
   // Clustering runs under the service role: a citizen is not allowed to write
   // `incidents` or `incident_reporters` directly, and should not be. The report
-  // insert below still goes through their own client so RLS applies to the row
+  // insert below still goes through their own client, so RLS applies to the row
   // that is actually theirs.
   let cluster;
   try {
@@ -90,7 +95,7 @@ export async function createReport(request: Request): Promise<Response> {
       device_fingerprint: body.device_fingerprint,
     })
     .select('id, ticket_id, created_at')
-    .single();
+    .single<{ id: string; ticket_id: string; created_at: string }>();
 
   if (insertErr || !report) {
     console.error('[api] report insert failed:', insertErr);
@@ -111,9 +116,10 @@ export async function createReport(request: Request): Promise<Response> {
 
 /* ── GET /api/my-reports ──────────────────────────────────────────────────── */
 
-const LIST_SELECT = `
-  id, ticket_id, category, photo_url, address, created_at,
-  incidents ( status, report_count )
+const REPORT_WITH_INCIDENT_SELECT = `
+  id, ticket_id, category, photo_url, address, description, severity_self,
+  voice_note_url, gps_accuracy_m, lat, lng, created_at, incident_id,
+  incidents ( status, report_count, department, resolution_photo_url )
 `;
 
 export async function listMyReports(request: Request): Promise<Response> {
@@ -128,30 +134,34 @@ export async function listMyReports(request: Request): Promise<Response> {
   if (Number.isNaN(from) || from < 0) return fail('VALIDATION_FAILED', 'Invalid cursor');
 
   // RLS already restricts this to the caller's own rows; the explicit filter is
-  // belt and braces, and it lets the index on (user_id, created_at) be used.
+  // belt and braces, and it lets the (user_id, created_at) index be used.
   const { data, error, count } = await caller.db
     .from('reports')
-    .select(LIST_SELECT, { count: 'exact' })
+    .select(REPORT_WITH_INCIDENT_SELECT, { count: 'exact' })
     .eq('user_id', caller.userId)
     .order('created_at', { ascending: false })
-    .range(from, from + limit - 1);
+    .range(from, from + limit - 1)
+    .returns<ReportWithIncidentRow[]>();
 
   if (error) {
     console.error('[api] my-reports failed:', error);
     return fail('INTERNAL', 'Could not load your reports');
   }
 
-  const items: MyReportListItem[] = (data ?? []).map((row: any) => ({
-    report_id: row.id,
-    ticket_id: row.ticket_id,
-    category: row.category,
-    photo_url: row.photo_url,
-    address: row.address ?? 'Location pinned',
-    status: row.incidents?.status ?? 'SUBMITTED',
-    created_at: row.created_at,
-    report_count: row.incidents?.report_count ?? 1,
-    awaiting_verification: row.incidents?.status === 'RESOLVED',
-  }));
+  const items: MyReportListItem[] = (data ?? []).map((row) => {
+    const incident = embeddedOne(row.incidents);
+    return {
+      report_id: row.id,
+      ticket_id: row.ticket_id,
+      category: row.category,
+      photo_url: row.photo_url,
+      address: row.address ?? 'Location pinned',
+      status: incident?.status ?? 'SUBMITTED',
+      created_at: row.created_at,
+      report_count: incident?.report_count ?? 1,
+      awaiting_verification: incident?.status === 'RESOLVED',
+    };
+  });
 
   const next = from + limit < (count ?? 0) ? String(from + limit) : null;
   return ok({ items, next_cursor: next, total: count ?? items.length });
@@ -165,64 +175,62 @@ export async function getReport(request: Request, reportId: string): Promise<Res
 
   const { data: row, error } = await caller.db
     .from('reports')
-    .select(
-      `id, ticket_id, category, photo_url, address, description, severity_self,
-       voice_note_url, gps_accuracy_m, lat, lng, created_at,
-       incident_id,
-       incidents ( status, report_count, department, resolution_photo_url )`,
-    )
+    .select(REPORT_WITH_INCIDENT_SELECT)
     .eq('id', reportId)
-    .maybeSingle();
+    .maybeSingle<ReportWithIncidentRow>();
 
   if (error) return fail('INTERNAL', 'Could not load the report');
-  // RLS returns nothing for someone else's report, which is a 404 rather than a
+  // RLS returns nothing for someone else's report. That is a 404 rather than a
   // 403 on purpose: confirming a report exists is itself information.
   if (!row) return fail('NOT_FOUND', 'Report not found');
 
-  const incident = (row as any).incidents;
+  const incident = embeddedOne(row.incidents);
 
   const { data: history } = await caller.db
     .from('status_history')
-    .select('to_status, at, note')
-    .eq('incident_id', (row as any).incident_id)
-    .order('at', { ascending: true });
+    .select('from_status, to_status, at, note')
+    .eq('incident_id', row.incident_id)
+    .order('at', { ascending: true })
+    .returns<StatusHistoryRow[]>();
 
-  const timeline: TimelineEntry[] = (history ?? []).map((h: any) => ({
-    status: h.to_status as Status,
+  const timeline: TimelineEntry[] = (history ?? []).map((h) => ({
+    status: h.to_status,
     at: h.at,
-    department: h.to_status === 'ACKNOWLEDGED' ? (incident?.department as Department) ?? null : null,
-    note: h.note ?? null,
+    // The department is only meaningful on the acknowledgement row, which is
+    // where the citizen timeline shows "Public Works has acknowledged this".
+    department: h.to_status === 'ACKNOWLEDGED' ? incident?.department ?? null : null,
+    note: h.note,
   }));
 
-  // A report always has at least a SUBMITTED row; synthesise it if the history
+  // A report always has at least a SUBMITTED row. Synthesise it if the history
   // trigger has not fired yet, so the timeline is never empty on screen.
   if (timeline.length === 0) {
-    timeline.push({ status: 'SUBMITTED', at: (row as any).created_at, department: null, note: null });
+    timeline.push({ status: 'SUBMITTED', at: row.created_at, department: null, note: null });
   }
 
   const { data: myVerification } = await caller.db
     .from('report_verifications')
     .select('fixed')
     .eq('report_id', reportId)
-    .maybeSingle();
+    .maybeSingle<VerificationRow>();
 
   const detail: ReportDetail = {
-    report_id: (row as any).id,
-    ticket_id: (row as any).ticket_id,
-    category: (row as any).category,
-    photo_url: (row as any).photo_url,
-    address: (row as any).address ?? 'Location pinned',
+    report_id: row.id,
+    ticket_id: row.ticket_id,
+    category: row.category,
+    photo_url: row.photo_url,
+    address: row.address ?? 'Location pinned',
     status: incident?.status ?? 'SUBMITTED',
-    created_at: (row as any).created_at,
+    created_at: row.created_at,
     report_count: incident?.report_count ?? 1,
     awaiting_verification: incident?.status === 'RESOLVED',
-    location: { lat: (row as any).lat, lng: (row as any).lng },
-    description: (row as any).description ?? null,
-    severity_self: (row as any).severity_self,
-    voice_note_url: (row as any).voice_note_url ?? null,
+    location: { lat: row.lat, lng: row.lng },
+    description: row.description,
+    severity_self: row.severity_self,
+    voice_note_url: row.voice_note_url,
     timeline,
     resolution_photo_url: incident?.resolution_photo_url ?? null,
-    verified_by_me: myVerification ? (myVerification.fixed as boolean) : null,
+    verified_by_me: myVerification ? myVerification.fixed : null,
   };
 
   return ok(detail);
@@ -249,11 +257,11 @@ export async function verifyReport(request: Request, reportId: string): Promise<
     .from('reports')
     .select('id, incident_id, incidents ( status )')
     .eq('id', reportId)
-    .maybeSingle();
+    .maybeSingle<{ id: string; incident_id: string; incidents: { status: Status } | null }>();
   if (!report) return fail('NOT_FOUND', 'Report not found');
 
-  const incidentId = (report as any).incident_id as string;
-  const currentStatus = (report as any).incidents?.status as Status;
+  const incidentId = report.incident_id;
+  const currentStatus = embeddedOne(report.incidents)?.status;
 
   if (currentStatus !== 'RESOLVED') {
     return fail(
@@ -274,14 +282,18 @@ export async function verifyReport(request: Request, reportId: string): Promise<
     return fail('INTERNAL', 'Could not record your answer');
   }
 
+  // Counting every reporter's vote needs the service role: a citizen can only
+  // see their own verification row, which is correct and also means they cannot
+  // compute the tally themselves.
   const admin = supabaseAdmin();
   const { data: votes } = await admin
     .from('report_verifications')
     .select('fixed')
-    .eq('incident_id', incidentId);
+    .eq('incident_id', incidentId)
+    .returns<VerificationRow[]>();
 
   const total = votes?.length ?? 0;
-  const notFixed = votes?.filter((v: any) => v.fixed === false).length ?? 0;
+  const notFixed = votes?.filter((v) => v.fixed === false).length ?? 0;
   const shouldReopen = total > 0 && notFixed / total > REOPEN_THRESHOLD;
 
   let nextStatus: Status = currentStatus;
@@ -296,6 +308,7 @@ export async function verifyReport(request: Request, reportId: string): Promise<
       .eq('id', incidentId);
     if (statusErr) {
       console.error('[api] status update failed:', statusErr);
+      // The vote is recorded either way — report the status we know is true.
       nextStatus = currentStatus;
     }
   }
