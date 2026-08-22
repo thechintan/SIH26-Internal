@@ -104,6 +104,7 @@ const SORT_OPTIONS = [
 /* ── Command Center page ──────────────────────────────────────────────────── */
 
 export default function AdminCommandCenter() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ViewTab>('queue');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');

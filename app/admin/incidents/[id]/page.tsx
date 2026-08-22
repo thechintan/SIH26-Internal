@@ -57,7 +57,7 @@ function BreakdownPanel({ breakdown }: { breakdown: PriorityBreakdown }) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-200">Priority Breakdown</h3>
         <span className="text-xs text-slate-500">
-          Computed {new Date(breakdown.computed_at).toLocaleString()}
+          Computed {new Date(breakdown.computedAt).toLocaleString()}
         </span>
       </div>
 
@@ -83,7 +83,7 @@ function BreakdownPanel({ breakdown }: { breakdown: PriorityBreakdown }) {
 
       <div className="pt-3 border-t border-white/[0.06] flex items-baseline justify-between">
         <span className="text-sm font-semibold text-slate-200">Total Score</span>
-        <span className="text-xl font-bold text-white">{breakdown.total.toFixed(2)}</span>
+        <span className="text-xl font-bold text-white">{breakdown.score.toFixed(2)}</span>
       </div>
     </div>
   );

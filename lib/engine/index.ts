@@ -70,3 +70,7 @@ export {
 
 // Merge
 export { validateMerge, computeMerge } from './merge';
+
+// Rescore (Vercel Cron → DB)
+export type { RescoreResult } from './rescore';
+export { rescoreAllIncidents } from './rescore';
