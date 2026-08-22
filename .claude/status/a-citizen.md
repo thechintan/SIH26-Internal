@@ -19,10 +19,11 @@ Works, pushed, safe for others to build on.
   - Step 6 handles email/password Auth at submit (Decision 005).
 - **My Reports list (`/my-reports`)** — card list of reports submitted by the citizen.
 - **Track timeline (`/track/[id]`)** — status history, resolution photo, verification loop prompt.
+- **Mobile Polish** — added `Viewport` export in `layout.tsx` to prevent iOS input zoom and ensure 100% viewport width, ensured min 44x44px touch targets on buttons.
 
 ## In flight
 Started, not safe to depend on yet.
-- Polish on real phone — Lighthouse mobile > 85
+- *(none right now)*
 
 ## I need from you
 - *(none right now)*
