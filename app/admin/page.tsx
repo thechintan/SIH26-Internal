@@ -13,6 +13,7 @@ import {
 import type { IncidentSummary } from '../../lib/contracts/incident';
 import { TIER_COLORS, STATUS_COLORS, CATEGORY_ICONS } from './_lib/constants';
 import Map from './_components/Map';
+import CustomSelect from './_components/CustomSelect';
 import { INCIDENT_SUMMARIES } from '../../mocks/fixtures';
 
 /* ── KPI Card ─────────────────────────────────────────────────────────────── */
@@ -89,7 +90,6 @@ export default function AdminCommandCenter() {
   const [filterDept, setFilterDept]         = useState('');
   const [filterTier, setFilterTier]         = useState('');
   const [sort, setSort]                     = useState('priority');
-  const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
 
   /* Filtered + sorted rows */
   const incidents = useMemo(() => {
@@ -114,20 +114,11 @@ export default function AdminCommandCenter() {
   const resolved     = all.filter(i => i.status === 'RESOLVED').length;
   const avgAge       = all.length ? (all.reduce((s, i) => s + i.age_days, 0) / all.length).toFixed(1) : '0';
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => {
-    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
-  });
-  const toggleAll = () => setSelectedIds(
-    selectedIds.size === incidents.length ? new Set() : new Set(incidents.map(i => i.incident_id))
-  );
-
-  const sel = { background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)', borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--admin-text-primary)', outline: 'none', cursor: 'pointer', appearance: 'none' as const };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--admin-bg-base)' }}>
 
       {/* ── KPI strip ── */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--admin-border)', background: 'var(--admin-bg-surface)', flexShrink: 0 }}>
+      <div style={{ padding: '16px 24px', flexShrink: 0 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
           <KPICard label="Open Incidents"     value={openCount}  color="var(--color-semantic-info)" icon="🚨" />
           <KPICard label="Unassigned"          value={unassigned} color="var(--color-semantic-warning)" icon="⏳" />
@@ -151,79 +142,82 @@ export default function AdminCommandCenter() {
       </div>
 
       {/* ── Split view ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', padding: '0 24px 24px 24px', gap: 24 }}>
 
         {/* ─── Queue panel ─── */}
         <div style={{
-          width: 420, flexShrink: 0, display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid var(--admin-border)',
+          width: 480, flexShrink: 0, display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--admin-border)', borderRadius: 12,
           overflow: 'hidden', background: 'var(--admin-bg-surface)',
+          boxShadow: 'var(--admin-shadow-card)',
         }} className={activeTab === 'queue' ? 'flex' : 'hidden lg:flex'}>
 
           {/* Filters header */}
-          <div style={{ padding: '16px', borderBottom: '1px solid var(--admin-border)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ padding: '20px', borderBottom: '1px solid var(--admin-border)', flexShrink: 0, zIndex: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-text-primary)' }}>Incident Queue</span>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-semantic-info)', border: '1px solid var(--color-semantic-info)', color: 'var(--color-semantic-info)' }}>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--admin-text-primary)' }}>Incident Queue</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-semantic-info)', border: '1px solid var(--color-semantic-info)', color: 'var(--color-semantic-info)' }}>
                   {incidents.length}
                 </span>
               </div>
             </div>
 
             {/* Filter dropdowns */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {[
-                { label: 'Category', val: filterCategory, set: setFilterCategory, opts: CATEGORIES.map(c => ({ v: c, l: CATEGORY_LABEL[c] })) },
-                { label: 'Status',   val: filterStatus,   set: setFilterStatus,   opts: STATUSES.map(s => ({ v: s, l: s.replace('_',' ') })) },
-                { label: 'Dept',     val: filterDept,     set: setFilterDept,     opts: DEPARTMENTS.map(d => ({ v: d, l: DEPARTMENT_LABEL[d] })) },
-                { label: 'Priority', val: filterTier,     set: setFilterTier,     opts: PRIORITY_TIERS.map(t => ({ v: t, l: t })) },
-                { label: 'Sort',     val: sort,           set: setSort,           opts: SORT_OPTIONS.map(s => ({ v: s.value, l: s.label })) },
+                { label: 'Category', val: filterCategory, set: setFilterCategory, opts: [{value: '', label: 'All'}, ...CATEGORIES.map(c => ({ value: c, label: CATEGORY_LABEL[c] }))] },
+                { label: 'Status',   val: filterStatus,   set: setFilterStatus,   opts: [{value: '', label: 'All'}, ...STATUSES.map(s => ({ value: s, label: s.replace('_',' ') }))] },
+                { label: 'Dept',     val: filterDept,     set: setFilterDept,     opts: [{value: '', label: 'All'}, ...DEPARTMENTS.map(d => ({ value: d, label: DEPARTMENT_LABEL[d] }))] },
+                { label: 'Priority', val: filterTier,     set: setFilterTier,     opts: [{value: '', label: 'All'}, ...PRIORITY_TIERS.map(t => ({ value: t, label: t }))] },
+                { label: 'Sort',     val: sort,           set: setSort,           opts: SORT_OPTIONS },
               ].map(({ label, val, set, opts }) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--admin-text-muted)', marginBottom: 4 }}>{label}</div>
-                  <select value={val} onChange={e => set(e.target.value)} style={sel}>
-                    <option value="">All</option>
-                    {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
+                <div key={label} style={{ flex: '1 1 auto', minWidth: 'calc(33% - 12px)' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--admin-text-muted)', marginBottom: 6 }}>{label}</div>
+                  <CustomSelect
+                    value={val}
+                    onChange={set}
+                    options={opts}
+                    className="w-full"
+                  />
                 </div>
               ))}
             </div>
           </div>
 
           {/* List */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--admin-bg-base)' }}>
             {incidents.map(inc => (
               <Link key={inc.incident_id} href={`/admin/incidents/${inc.incident_id}`}
                 style={{
-                  display: 'block', padding: '16px',
+                  display: 'block', padding: '16px 20px',
                   borderBottom: '1px solid var(--admin-border)',
                   textDecoration: 'none', cursor: 'pointer',
-                  background: 'transparent', transition: 'background 0.15s ease',
+                  background: 'var(--admin-bg-surface)', transition: 'background 0.15s ease',
                 }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--admin-bg-hover)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--admin-bg-surface)'}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
                   <div style={{ 
-                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                    width: 48, height: 48, borderRadius: 12, flexShrink: 0,
                     background: 'var(--admin-bg-active)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24,
                     border: '1px solid var(--admin-border)'
                   }}>
                     {CATEGORY_ICONS[inc.category] ?? '📋'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <PriorityBadge tier={inc.priority_tier} score={inc.priority_score} />
                       <StatusBadge status={inc.status} />
-                      {inc.flagged_mismatch && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', border: '1px solid var(--color-semantic-warning)', fontWeight: 700 }}>⚠ Mismatch</span>}
+                      {inc.flagged_mismatch && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', border: '1px solid var(--color-semantic-warning)', fontWeight: 700 }}>⚠ Mismatch</span>}
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--admin-text-primary)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--admin-text-primary)', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {inc.address}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--admin-text-secondary)' }}>
-                      <span>{CATEGORY_LABEL[inc.category]}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--admin-text-secondary)' }}>
+                      <span style={{ fontWeight: 500 }}>{CATEGORY_LABEL[inc.category]}</span>
                       <span style={{ color: 'var(--admin-text-muted)' }}>•</span>
                       <span>{inc.report_count} reports</span>
                       <span style={{ color: 'var(--admin-text-muted)' }}>•</span>
@@ -235,7 +229,8 @@ export default function AdminCommandCenter() {
             ))}
 
             {incidents.length === 0 && (
-              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--admin-text-muted)', fontSize: 14 }}>
+              <div style={{ padding: '64px 20px', textAlign: 'center', color: 'var(--admin-text-muted)', fontSize: 14 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
                 No incidents match the current filters.
               </div>
             )}
@@ -243,7 +238,12 @@ export default function AdminCommandCenter() {
         </div>
 
         {/* ─── Map panel ─── */}
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0 }}
+        <div style={{ 
+          flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0,
+          border: '1px solid var(--admin-border)', borderRadius: 12,
+          boxShadow: 'var(--admin-shadow-card)',
+          background: 'var(--admin-bg-active)'
+        }}
           className={activeTab === 'map' ? 'flex' : 'hidden lg:flex'}
         >
           <div style={{ position: 'absolute', inset: 0 }}>

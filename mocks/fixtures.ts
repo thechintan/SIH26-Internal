@@ -118,9 +118,13 @@ const OPEN_STATUSES: Status[] = [
 ];
 
 function photo(category: Category, n: number): string {
-  // Use picsum.photos for realistic demo photography instead of flat SVGs.
-  // Seeded by category and n so it is deterministic across reloads.
-  return `https://picsum.photos/seed/${category}${n}/800/600`;
+  if (category === 'WATER_LEAK' || category === 'DRAIN_MANHOLE') return '/photos/flood.png';
+  if (category === 'GARBAGE') return '/photos/garbage.png';
+  if (category === 'FOOTPATH' || category === 'POTHOLE' || category === 'STRUCTURAL') return '/photos/footpath.png';
+  if (category === 'STREETLIGHT' || category === 'ELECTRICAL') return '/photos/streetlight.png';
+  
+  const pics = ['/photos/flood.png', '/photos/garbage.png', '/photos/footpath.png', '/photos/streetlight.png'];
+  return pics[n % pics.length];
 }
 
 function makeIncident(i: number): IncidentDetail {
