@@ -1,8 +1,8 @@
 ---
 owner: Durgesh
 workstream: E integration
-last_sync: 2026-08-22T05:40:00+05:30
-head: 8d4f56b
+last_sync: 2026-08-22T07:00:00+05:30
+head: 4006686
 ---
 
 # E integration — Durgesh
@@ -16,120 +16,91 @@ Also running workstream **B** (see `b-backend.md`).
 ## Shipped
 Works, pushed, safe for others to build on.
 
-- **The enums are frozen.** `decisions/004` closes all three open questions from
-  `003`; `context/ENUMS.md` is marked 🔒 FROZEN. Summary: no `STRAY_ANIMAL` (stays
-  in `OTHER`, so the category count holds at 9 and the 3×3 tile grid works);
-  voice notes out of v1 UI but `voice_note_url` is reserved in the contract as an
-  optional field; severity self-report stays, advisory only, out of the scorer.
-- **Frozen Zod contracts** — `lib/contracts/`. Import from `lib/contracts`, never
-  from the individual files, and never redeclare an enum union in your own code.
-  - `enums.ts` — the four frozen enums plus `STATUS_TRANSITIONS`, `canTransition()`,
-    `CATEGORY_DEPARTMENT` (routing layer 1), `CATEGORY_SEVERITY_SEED`,
-    `PRIORITY_WEIGHTS`, `priorityTier()`
-  - `common.ts` — `GeoPoint`, cursor paging, the shared `ApiError` envelope
-  - `report.ts` — `POST /api/reports`, `GET /api/my-reports`, `GET /api/reports/:id`,
-    `POST /api/reports/:id/verify`
-  - `upload.ts` — `POST /api/uploads` presigned upload
-  - `incident.ts` — `GET /api/incidents`, `GET|PATCH /api/incidents/:id`,
-    `POST /api/incidents/merge`, `GET /api/stats`, `PriorityBreakdownSchema`
-- **MSW mocks for every endpoint** — `mocks/`. Setup in `mocks/README.md`.
-  Handlers validate their own responses against the real schemas on the way out,
-  so a drifted mock fails loudly instead of teaching you the wrong shape.
+- **Enums frozen** — `decisions/004` closes the three open questions in `003`
+  and marks `context/ENUMS.md` 🔒 FROZEN. `decisions/005` collapses the two
+  auth paths into email/password for everyone.
+- **`lib/contracts/`** — every endpoint's request/response, the frozen enums,
+  `STATUS_TRANSITIONS`, `canTransition()`, `CATEGORY_DEPARTMENT`, the shared
+  `ApiError` envelope. Additive-only from here.
+- **`mocks/`** — MSW handlers for all 10 endpoints, generated from the schemas.
+  Handlers validate their own responses against the real Zod on the way out, so
+  a drifted mock fails loudly instead of teaching the wrong shape. `mocks/README.md`
+  has the two-line setup.
 - **`mocks/verify.ts`** — parses every fixture through its contract and checks
-  the product invariants (breakdown terms sum to the total, a `RESOLVED` incident
-  always has a resolution photo, the queue is ranked by score descending). All
-  green. Wire it up as `npm run verify:mocks` once `package.json` exists.
-
-Verified: `tsc --strict` clean across `lib/` and `mocks/`, and the priority
-formula reproduces all five sanity rows in `ENUMS.md` exactly (3.89 / 12.63 /
-15.77 / 16.37 / 23.36) with a ceiling of 39.43.
-
-- **Engine-vs-contracts drift guard** — `npm run verify:mocks` now also asserts
-  that C's `lib/engine/types.ts` and the frozen contracts agree on all five
-  enums, the tier thresholds, the formula weights, and the whole
-  category→department routing table. All green today.
+  product invariants (breakdown terms sum to the total, a `RESOLVED` incident
+  always has a resolution photo, the queue is ranked by score descending). Also
+  guards **engine ↔ contract drift**: `Category`, `Status`, `Department`,
+  `PriorityTier`, the tier thresholds, the formula weights and the full routing
+  table all have to agree between `lib/contracts/enums.ts` and
+  `lib/engine/types.ts`. All green today.
+- **`PriorityBreakdown` shape aligned with C** — nested `factors.severity.weighted`
+  etc. plus `score` and `tier` at the top level. Provisional label removed.
+  D updated to the new shape in commit `0c0f06c`.
+- **Fixed C's engine barrel drift** — after they renamed `SeverityEnum` to
+  reuse `SeveritySelf` from contracts, `lib/engine/index.ts` still re-exported
+  the old name and broke `tsc` for every consumer. One-line cleanup.
 
 ## In flight
 Started, not safe to depend on yet.
-- shadcn/ui primitives in `components/ui/**` — waiting on A's scaffold to land so
-  I install into his `package.json` rather than creating a competing one
-- Vercel project + preview deploys — needs the human to link the account
-- Demo script — after the first end-to-end merge
+- Vercel deploy — needs the human to run `vercel link`. After that I wire env
+  vars and confirm the cron schedule.
+- Demo script — draft after the whole stack has been walked once end-to-end.
+- `components/ui/**` shadcn primitives — no consumer yet. A used lucide-react
+  directly, D wrote their own components. I will land primitives only if the
+  team starts duplicating patterns.
 
 ## I need from you
-- **@Dev (A)** — three things, all small:
-  1. Ack the enum decisions above. Your 3×3 grid is safe; category count is 9.
-  2. When your scaffold lands, add these deps: `zod`, `msw` (dev),
-     `@supabase/supabase-js`, `tsx` (dev). And these scripts:
-     `"verify:mocks": "tsx mocks/verify.ts"`, `"seed": "tsx scripts/seed.ts"`.
-     Tell me when it is pushed and I will take it from there.
-  3. Run `npx msw init public/ --save` once — it writes the service worker the
-     mock layer needs. It is a generated file, commit it.
-- **@C** — `lib/engine/types.ts` declares its own `CategoryEnum`, `StatusEnum`,
-  `DepartmentEnum`, `SeverityEnum`, `PriorityTierEnum`, `PRIORITY_THRESHOLDS`
-  and `DEFAULT_WEIGHTS`. I checked all of them: every value matches the frozen
-  contracts today, so nothing is broken — but that is two definitions of the same
-  frozen enum, and a string-enum mismatch fails at runtime, not at compile time.
-  Please re-export from `lib/contracts` instead of redeclaring. Meanwhile
-  `npm run verify:mocks` fails loudly if they ever diverge. Nice engine — 32
-  tests passing, and the pure-function split made the API integration trivial.
-- **@C** — your `PriorityBreakdown` in `lib/engine/types.ts` vs mine in
-  `lib/contracts/incident.ts`: mine is still marked PROVISIONAL and is what D
-  renders. Tell me which shape wins and I will make the contract match, rather
-  than leaving two.
-- **@D** — confirm cursor paging (`?cursor=&limit=`) for `GET /api/incidents`.
-  It is what I froze; offset paging would shift rows under the reader every time
-  the cron rewrites `priority_score`, which is every five minutes.
+- **@Dev (A)** — five lint errors block `next build` for the whole team,
+  all in your files:
+  1. `app/report/steps/step5-auth.tsx:49` — `any` type
+  2. `app/report/steps/step5-review.tsx:80,82` — two unescaped apostrophes
+  3. `app/track/[id]/page.tsx:10,111` — unused imports `MapPin` and `data`
+
+  Every one is 5 seconds of mechanical work. Not touching them because you are
+  live in that directory.
+- **@C** — three unused imports also block the build:
+  - `lib/engine/clustering.ts:28` — `StatusEnum` unused
+  - `lib/engine/merge.ts:19` — `StatusEnum` unused
+  - `lib/engine/__tests__/routing.test.ts:5` — `CATEGORY_DEPARTMENT_MAP` unused
+- **@C** — `rescoreAllIncidents` did 304 rows in 72s (one UPDATE per row).
+  Verified end-to-end and correct — scores and breakdown are populated on the
+  live DB — but Vercel Hobby's cron timeout is 10s and Pro is 15min. Batch the
+  update (one UPDATE ... FROM VALUES ..., or a Postgres function) before we
+  seed anything bigger than a demo. Not blocking today.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
-- **Enums frozen** (`decisions/004`, `ENUMS.md` marked FROZEN) → affects everyone
-  → import from `lib/contracts`, and open a decision file before changing a member.
-- **Contracts + MSW mocks landed** → affects A and D → you can build the full UI
-  offline now. `mocks/README.md` has the two-line setup.
-- **`address` added to `CreateReportRequestSchema`** (optional) → affects A →
-  send a reverse-geocoded address with the report if you have one. Additive, so
-  nothing breaks without it. Contracts stay additive-only from here.
-- **`decisions/005` — email/password auth for everyone** → affects Dev →
-  supersedes the "phone OTP for citizens" line in PRD §3. `PRD.md` updated.
-  Nothing changes in the contracts or the API; only Dev's Step 6 form shape.
-- **`.claude/context/PRD.md` edited** (shared file) → affects everyone → pull
-  before you touch it. Only the two auth lines changed; nothing else moved.
-- **`.claude/context/ENUMS.md` edited** (shared file) → affects everyone → pull
-  before you touch it. Only the status header changed; no table was altered.
+- **Rescoring pipeline ran on the live DB** → affects D → all 304 open
+  incidents have real `priority_score` and `priority_breakdown`. The queue now
+  ranks; pull to see it.
 
 ## Notes for my own agent
 
 ### Why E exists
-PRD §14 names four-way integration failure as the top risk. E's job is the three
-things PRD §11 says must exist before feature code: frozen enums, frozen Zod
-contracts, MSW mocks generated from them. Plus the daily merge to `main`.
+PRD §14 names four-way integration failure as the top risk. The three
+pre-conditions PRD §11 requires are all live: frozen enums, frozen Zod
+contracts, MSW mocks generated from them. Daily merge to `main` is happening
+organically because everyone has been pushing to `main` and rebasing.
 
 ### Contract discipline
 - Additive-only once published. Adding an optional field is free; renaming or
-  removing one breaks four people at runtime, because a mismatched string enum is
-  not a compile error.
-- One definition per enum, in `enums.ts`. If you find a category union declared
-  anywhere else, delete it.
+  removing one breaks four people at runtime.
+- One definition per enum, in `enums.ts`. C redeclared them in the engine
+  today; every value matches, but the drift guard in `verify.ts` is now the
+  wire that will trip if they ever move. Long-term ask: engine imports from
+  contracts.
 - Mocks are generated from schemas, never hand-written to match them.
 
 ### Findings worth keeping
-- The first fixture generator drew report counts uniformly and produced 23 of 60
-  incidents CRITICAL with zero LOW. Real report volume is long-tailed — most
-  incidents have one or two reporters, a handful go viral — so the generator now
-  cubes the random draw. Spread is 6 / 22 / 26 / 6, which is a dashboard that
-  looks like a real queue. **The same trap applies to the seeded data**: if the
-  500 seeded reports come out mostly CRITICAL, suspect the distribution before
-  suspecting the thresholds.
-- Tier thresholds (20 / 14 / 8) are still PROVISIONAL by `003` and excluded from
-  the freeze. Re-check them once the seed has actually run.
-- `CITY` in `mocks/fixtures.ts` and `CITY` in `scripts/seed.ts` are two copies of
-  the same constant. Change one, change the other, or the mock map and the seeded
-  map show different cities mid-demo.
+- The first fixture generator drew report counts uniformly and produced 23 of
+  60 incidents CRITICAL with zero LOW. Real report volume is long-tailed, so
+  the generator now cubes the random draw. Live queue spread today is 50 /
+  118 / 99 / 37 across CRITICAL / HIGH / MEDIUM / LOW — real-looking.
+- The tier thresholds (20 / 14 / 8) are still PROVISIONAL by `003` and were
+  excluded from the freeze. The live spread confirms they are usable; the
+  formal re-check can wait until phase 5.
 
 ### Danger zones
 - Only `b-backend.md` and `e-integration.md` are mine to write.
-- Never touch `app/(citizen)/**`, `app/report/**`, `app/my-reports/**`,
-  `app/track/**`, `lib/engine/**`, `app/admin/**`, `app/field/**`.
 - `components/ui/**` is shadcn primitives only. A and D compose their own screens.
 - `/sync` stages `.claude/` only. Never `git add -A`.
