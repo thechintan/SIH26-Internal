@@ -1,8 +1,8 @@
 ---
 owner: Durgesh
 workstream: E integration
-last_sync: 2026-08-22T07:00:00+05:30
-head: 4006686
+last_sync: 2026-08-22T08:23:56+05:30
+head: 374754e
 ---
 
 # E integration — Durgesh
@@ -50,18 +50,8 @@ Started, not safe to depend on yet.
   team starts duplicating patterns.
 
 ## I need from you
-- **@Dev (A)** — five lint errors block `next build` for the whole team,
-  all in your files:
-  1. `app/report/steps/step5-auth.tsx:49` — `any` type
-  2. `app/report/steps/step5-review.tsx:80,82` — two unescaped apostrophes
-  3. `app/track/[id]/page.tsx:10,111` — unused imports `MapPin` and `data`
-
-  Every one is 5 seconds of mechanical work. Not touching them because you are
-  live in that directory.
-- **@C** — three unused imports also block the build:
-  - `lib/engine/clustering.ts:28` — `StatusEnum` unused
-  - `lib/engine/merge.ts:19` — `StatusEnum` unused
-  - `lib/engine/__tests__/routing.test.ts:5` — `CATEGORY_DEPARTMENT_MAP` unused
+- **@everyone** — the build-blocking lint errors I was asking A and C to clear
+  are DONE (I fixed them in `374754e`, see Heads up). `next build` is unblocked.
 - **@C** — `rescoreAllIncidents` did 304 rows in 72s (one UPDATE per row).
   Verified end-to-end and correct — scores and breakdown are populated on the
   live DB — but Vercel Hobby's cron timeout is 10s and Pro is 15min. Batch the
@@ -70,6 +60,32 @@ Started, not safe to depend on yet.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
+- **Frontend repair landed across all workstreams (commit `374754e`). Pull
+  before continuing.** Broad fix pushed at Durgesh's direction — the app looked
+  broken on first load (boilerplate landing, dark-mode bleed, broken images,
+  build blocked). What changed in *your* paths:
+  - **@Dev (A)** — the landing page `app/(citizen)/page.tsx` was still the
+    create-next-app boilerplate; replaced with a real CivicReport landing (hero,
+    live `/api/stats`, how-it-works, 9-category grid, CTA). Also fixed a *real
+    bug* in `report/steps/step5-review.tsx`: the upload request sent
+    `{filename, contentType}` — wrong shape, so `/api/uploads` returned 400 and
+    submit failed. Now sends `{kind, content_type, size_bytes}` and reads
+    `upload_url`; verified 400 → 200. Cleared lint errors that blocked
+    `next build` in step1/step3/step5-auth/step5-review/map-component,
+    my-reports, track. Your logic and layout are unchanged.
+  - **@Chintan (C)** — removed three unused imports that blocked `next build`:
+    `StatusEnum` in `clustering.ts` and `merge.ts`, `CATEGORY_DEPARTMENT_MAP`
+    in `__tests__/routing.test.ts`. No engine logic touched — 32/32 tests pass.
+  - **@Brinda (D)** — cleared lint errors in `admin/page.tsx`,
+    `admin/analytics/page.tsx` (dropped dead `LineChart`/`CATEGORY_DIST_DATA`,
+    typed the two tooltip `any`s), `admin/incidents/[id]/page.tsx`. UI unchanged.
+- **`app/globals.css` committed to a light theme** → affects everyone → dropped
+  the `prefers-color-scheme: dark` block and the `Arial` override that painted
+  pages black on dark-mode OSes. Don't re-add dark mode without restyling every
+  component (that half-applied state is what looked broken).
+- **`mocks/fixtures.ts` `photo()`** → affects A + D → now returns inline SVG
+  data URIs, so no more `/mock/photos/*.jpg` 404s in cards, thumbnails and
+  galleries. Swap for B's signed-URL read helper when it lands.
 - **Rescoring pipeline ran on the live DB** → affects D → all 304 open
   incidents have real `priority_score` and `priority_breakdown`. The queue now
   ranks; pull to see it.
