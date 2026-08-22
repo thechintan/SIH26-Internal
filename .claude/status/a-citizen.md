@@ -15,13 +15,15 @@ Works, pushed, safe for others to build on.
 - Next.js 14 project scaffold + route skeleton
 - Landing page (`/`) static shell
 - Route folders: `app/(citizen)`, `app/report`, `app/my-reports`, `app/track/[id]`
+- **Report wizard (Phase 2)** — fully wired against MSW mock layer.
 
 ## In flight
 Started, not safe to depend on yet.
-- Report wizard Steps 1-5 (building against MSW mocks) — expect by next sync
+- My Reports tracking page (`/my-reports`)
+- Single Report timeline page (`/track/[id]`)
 
 ## I need from you
-- **@B** — Presigned upload URL endpoint shape — needed for Step 5 upload progress bar. Will work against MSW mock until real endpoint lands.
+- *(none right now)*
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
