@@ -93,6 +93,16 @@ Started, not safe to depend on yet.
 
 ## Heads up
 Things I changed that affect other people. Delete once everyone has pulled.
+- **Auth is email + password for everyone** (`decisions/005`) → affects Dev →
+  Step 6 of the wizard is a plain email/password form, not a phone/OTP one.
+  `db.auth.signUp({ email, password })` for a new citizen,
+  `db.auth.signInWithPassword({ email, password })` for a returning one. Session
+  is picked up automatically by every subsequent API call. The comment block in
+  `lib/supabase/client.ts` has the shape.
+- **Live database has 777 reports / 267 incidents (2.91×)** → affects C and D →
+  the seed ran. Top incident has 17 unique reporters at SG Highway underpass.
+  Every `priority_score` is 0 until the rescoring cron runs; the queue will be
+  in insertion order until then.
 - **`react-leaflet` pinned to ^4.2.1 in `package.json`** → affects Dev and D →
   `npm install` failed outright on `main`: v5 requires React 19, and the scaffold
   is React 18 on Next 14. v4 is the React 18 line and the API is the same. Re-run

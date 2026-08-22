@@ -5,11 +5,11 @@
  * Owner: B (backend). Safe to import from a client component — this is the one
  * that is meant to be.
  *
- * A (citizen app) uses this for phone OTP:
+ * Auth is email + password for everyone; decisions/005 dropped phone OTP:
  *
  *     const db = supabaseBrowser()
- *     await db.auth.signInWithOtp({ phone })
- *     await db.auth.verifyOtp({ phone, token, type: 'sms' })
+ *     await db.auth.signUp({ email, password })          // Step 6 sign-up
+ *     await db.auth.signInWithPassword({ email, password }) // returning citizen
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAnonKey, supabaseUrl } from './env';
@@ -22,7 +22,8 @@ export function supabaseBrowser(): SupabaseClient {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      // The OTP link path never runs in this app; sessions come from verifyOtp.
+      // No magic-link / OAuth callback flow — sessions come from
+      // signInWithPassword directly, so URL detection is unused work.
       detectSessionInUrl: false,
     },
   });

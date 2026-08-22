@@ -90,6 +90,11 @@ Things I changed that affect other people. Delete once everyone has pulled.
 - **`address` added to `CreateReportRequestSchema`** (optional) → affects A →
   send a reverse-geocoded address with the report if you have one. Additive, so
   nothing breaks without it. Contracts stay additive-only from here.
+- **`decisions/005` — email/password auth for everyone** → affects Dev →
+  supersedes the "phone OTP for citizens" line in PRD §3. `PRD.md` updated.
+  Nothing changes in the contracts or the API; only Dev's Step 6 form shape.
+- **`.claude/context/PRD.md` edited** (shared file) → affects everyone → pull
+  before you touch it. Only the two auth lines changed; nothing else moved.
 - **`.claude/context/ENUMS.md` edited** (shared file) → affects everyone → pull
   before you touch it. Only the status header changed; no table was altered.
 

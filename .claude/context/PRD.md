@@ -56,7 +56,7 @@ One codebase, three surfaces, all responsive:
 | **Styling** | Tailwind CSS + shadcn/ui | Responsive utilities are the whole point here; shadcn gives you tables, dialogs, and forms without design time |
 | **Database** | Supabase (Postgres + **PostGIS**) | PostGIS is non-negotiable — clustering needs real geospatial queries. Supabase gives Postgres, auth, storage, and realtime in one service. |
 | **Storage** | Supabase Storage | Presigned upload URLs, no separate S3 setup |
-| **Auth** | Supabase Auth (phone OTP for citizens, email/password for admins) | Row Level Security ties directly to auth — use it |
+| **Auth** | Supabase Auth (email + password for everyone — decisions/005 dropped phone OTP) | Row Level Security ties directly to auth — use it |
 | **Realtime** | Supabase Realtime | Live dashboard updates without hand-rolling WebSockets |
 | **Maps** | Leaflet + OpenStreetMap tiles | Free, no API key, no billing surprises mid-demo. React wrapper: `react-leaflet` |
 | **Charts** | Recharts | Analytics with minimal ceremony |
@@ -429,7 +429,7 @@ Plus: **seed 500 synthetic reports** with realistic clustered coordinates over y
 
 - Supabase project, Postgres + PostGIS schema, migrations
 - Row Level Security policies for all three roles
-- Auth: phone OTP (citizen), email/password (admin)
+- Auth: email + password for everyone (decisions/005 replaced phone OTP)
 - Report ingestion endpoint + presigned upload URL generation
 - Rate limiting (10/user/hour)
 - Supabase Realtime channels for live dashboard
