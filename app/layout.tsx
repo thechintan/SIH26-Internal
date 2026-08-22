@@ -1,6 +1,9 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { MswProvider } from "@/components/providers/msw-provider";
+import { QueryProvider } from "@/components/providers/query-provider";
+
+const inter = Inter({ subsets: ["latin"] });
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -25,10 +28,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className={inter.className}>
+        <MswProvider>
+          <QueryProvider>
+            {children}
+          </QueryProvider>
+        </MswProvider>
       </body>
     </html>
   );
