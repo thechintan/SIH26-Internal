@@ -73,6 +73,9 @@ Things I changed that affect other people. Delete once everyone has pulled.
   → import from `lib/contracts`, and open a decision file before changing a member.
 - **Contracts + MSW mocks landed** → affects A and D → you can build the full UI
   offline now. `mocks/README.md` has the two-line setup.
+- **`address` added to `CreateReportRequestSchema`** (optional) → affects A →
+  send a reverse-geocoded address with the report if you have one. Additive, so
+  nothing breaks without it. Contracts stay additive-only from here.
 - **`.claude/context/ENUMS.md` edited** (shared file) → affects everyone → pull
   before you touch it. Only the status header changed; no table was altered.
 

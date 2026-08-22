@@ -217,7 +217,11 @@ async function main() {
     // 80% land on a hotspot, 20% scatter. The scatter is what proves clustering
     // is discriminating rather than merging everything nearby.
     const onHotspot = rand() < 0.8;
-    const base = onHotspot ? weightedHotspot() : { lat: CITY.lat, lng: CITY.lng };
+    const spot = weightedHotspot();
+    const base = onHotspot ? spot : { lat: CITY.lat, lng: CITY.lng };
+    const address = onHotspot
+      ? `${intBetween(1, 240)}, near ${spot.name}, ${CITY.name}`
+      : `${intBetween(1, 240)}, ${CITY.name}`;
     const spread = onHotspot ? 40 : 5000;
     const loc = offsetMetres(base.lat, base.lng, between(-spread, spread), between(-spread, spread));
 
@@ -257,6 +261,7 @@ async function main() {
         .insert({
           category,
           centroid: `POINT(${loc.lng} ${loc.lat})`,
+          address,
           status: 'SUBMITTED',
           first_reported_at: createdAt,
           previous_incident_id: previous ?? null,
@@ -278,6 +283,7 @@ async function main() {
       photo_url: `seed/photos/${category.toLowerCase()}-${intBetween(1, 6)}.jpg`,
       location: `POINT(${loc.lng} ${loc.lat})`,
       gps_accuracy_m: accuracy,
+      address,
       description: rand() < 0.6 ? pick(NOTES) : null,
       severity_self: pick(['MINOR', 'MODERATE', 'SEVERE'] as const) as SeveritySelf,
       device_fingerprint: `seed-device-${userId.slice(0, 8)}`,

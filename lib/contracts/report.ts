@@ -40,6 +40,14 @@ export const CreateReportRequestSchema = z.object({
   location: GeoPointSchema,
   gps_accuracy_m: GpsAccuracySchema,
 
+  /**
+   * Reverse-geocoded on the client — OSM Nominatim is free and needs no key, and
+   * doing it client-side keeps the geocode off the ingest path. Optional: a
+   * citizen who denied location permission and dropped a pin manually may not
+   * have one, and the report is still valid without it.
+   */
+  address: z.string().max(300).optional(),
+
   /** PRD §9.3 step 4 — optional and skippable, hard cap 140 chars. */
   description: z.string().max(140).optional(),
 

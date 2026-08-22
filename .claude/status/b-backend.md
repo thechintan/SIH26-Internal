@@ -39,12 +39,24 @@ Works, pushed, safe for others to build on.
   run. Reports reprints the reports-per-incident ratio and warns if it falls
   under PRD §13's 2.5× target.
 - **`supabase/README.md`** — how to apply and seed.
+- **Supabase project exists** — `SIH26`, ap-northeast-2, healthy. Project URL is
+  in `.env.local` (gitignored). Keys are the human's to paste.
+- **`lib/supabase/`** — `env.ts` (validated env, and a guard that throws if the
+  service key is ever reached from browser code), `admin.ts` (service role,
+  bypasses RLS, server only), `client.ts` (browser, carries the citizen session),
+  `request.ts` (`getCaller()` — runs queries as the caller so RLS applies).
+- **`lib/api/`** — every endpoint's logic as plain `Request → Response`
+  functions: `reports.ts`, `incidents.ts`, `uploads.ts`, `respond.ts`, and
+  `clustering.ts`. Testable without a Next server; the route files under
+  `app/api/**` will be three-line re-exports.
 
 ## In flight
 Started, not safe to depend on yet.
-- Supabase project itself — **blocked on the human**, see below
-- `app/api/**` route handlers against the frozen contracts — next, once A's
-  scaffold lands so there is a `package.json` to install into
+- Migrations are written but **not yet applied to the live project** — waiting on
+  the anon and service-role keys landing in `.env.local`
+- `app/api/**` route files — the handler logic is done in `lib/api/`; the route
+  files themselves wait for A's scaffold, because creating `app/` first would
+  make his `create-next-app` refuse to run
 - Vercel Cron endpoint for rescoring — after the routes
 
 ## I need from you
@@ -67,6 +79,15 @@ Started, not safe to depend on yet.
 Things I changed that affect other people. Delete once everyone has pulled.
 - **Schema landed** → affects C and D → the table and column names in
   `0001_init.sql` are what the API will return. Read it before writing queries.
+- **`lib/api/clustering.ts` is C's work sitting in B's folder** → affects C →
+  it implements PRD §6 exactly and exists only because `lib/engine/**` is
+  unclaimed and the ingest endpoint cannot return a truthful "N others reported
+  this" without it. When C lands, delete this file and change one import in
+  `lib/api/reports.ts`. Do not evolve both copies.
+- **`address` added to the report contract and to both tables** → affects A →
+  send a reverse-geocoded `address` on `POST /api/reports` (OSM Nominatim is free
+  and needs no key). Optional, so nothing breaks without it, but the admin queue
+  shows "Location pinned" for every row that omits it.
 - **PRD §5's partial index predicate widened** → affects C and D → the PRD writes
   it as `status != 'RESOLVED'`, but the frozen enum has four closed states, so the
   index excludes `RESOLVED`, `VERIFIED`, `REJECTED` and `DUPLICATE`. Otherwise it

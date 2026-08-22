@@ -145,7 +145,7 @@ export const handlers = [
       ticket_id,
       category: body.category,
       photo_url: body.photo_url,
-      address: match?.address ?? 'Dropped pin',
+      address: body.address ?? match?.address ?? 'Dropped pin',
       status: 'SUBMITTED' as const,
       created_at,
       report_count: match?.report_count ?? 1,

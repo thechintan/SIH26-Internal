@@ -67,7 +67,8 @@ create table public.departments (
 -- and for the analytics heat map.
 create table public.wards (
   id            uuid primary key default gen_random_uuid(),
-  name          text            not null,
+  -- Unique so the seed script can upsert on it and stay idempotent.
+  name          text            not null unique,
   geometry      geography(Polygon, 4326),
   created_at    timestamptz     not null default now()
 );
@@ -93,6 +94,16 @@ create table public.incidents (
   id                    uuid primary key default gen_random_uuid(),
   category              category_enum   not null,
   centroid              geography(Point, 4326) not null,
+  -- Plain lat/lng for the read path. geography(Point) is what the spatial
+  -- queries need; it is not what a JSON response or a Leaflet marker wants, and
+  -- an RPC per row to unpack it would be absurd. Generated and stored, so they
+  -- can never drift from the centroid they came from.
+  centroid_lat          double precision generated always as (st_y(centroid::geometry)) stored,
+  centroid_lng          double precision generated always as (st_x(centroid::geometry)) stored,
+  -- Reverse-geocoded on the client at report time and carried up to the
+  -- incident. Denormalised on purpose: the admin queue renders an address on
+  -- every row, and a geocode round trip per row would make the queue unusable.
+  address               text,
   ward_id               uuid references public.wards (id),
 
   -- Unique reporters, maintained from incident_reporters. Never a row count on
@@ -110,6 +121,11 @@ create table public.incidents (
   priority_breakdown    jsonb,
   -- An admin pinned the score; the auto-scorer skips this row until cleared.
   manual_override       boolean         not null default false,
+
+  -- True when any contributing report had the image model disagree with the
+  -- citizen's category. Rolled up to the incident so the admin queue can filter
+  -- on it without a subquery per row. Surfaced for review, never auto-applied.
+  flagged_mismatch      boolean         not null default false,
 
   -- Recurrence chain. Set when a new report lands on a location whose previous
   -- incident was already closed. Three links deep means the infrastructure needs
@@ -142,9 +158,17 @@ create table public.reports (
   -- PostGIS geography, not two float columns. The clustering query in PRD §6
   -- cannot exist without this.
   location            geography(Point, 4326) not null,
+  -- Same reasoning as incidents.centroid_lat/lng: spatial type for the queries,
+  -- plain numbers for the read path, generated so they cannot disagree.
+  lat                 double precision generated always as (st_y(location::geometry)) stored,
+  lng                 double precision generated always as (st_x(location::geometry)) stored,
   -- Browser GPS is materially worse than native. This drives the adaptive
   -- clustering radius: R = 35 + gps_accuracy_m.
   gps_accuracy_m      double precision not null default 0,
+  -- Reverse-geocoded client-side (free via OSM Nominatim, no API key). Nullable
+  -- because a citizen who denied location permission and dropped a pin manually
+  -- may not have one, and the report is still valid without it.
+  address             text,
 
   description         text check (char_length(description) <= 140),
   -- The citizen's own read. Advisory only — decisions/004 keeps this out of the
