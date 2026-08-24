@@ -26,6 +26,44 @@ export const BUCKET = {
 
 const URL_TTL_SECONDS = 15 * 60;
 
+/**
+ * Convert a private storage path (e.g. `report-photos/uid/date/uuid.jpg`)
+ * into a short-lived signed read URL that any authenticated viewer's browser
+ * can actually load in an <img>.
+ *
+ * Returns null when the path is null/empty or when Supabase errors — callers
+ * should treat null as "no photo available" rather than propagating the error.
+ *
+ * The TTL is intentionally short (15 min): signed read URLs are forwarded to
+ * a browser and caching is the browser's job, not ours.
+ */
+export async function resolveStorageUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+
+  // Determine which bucket owns this path from its prefix (the first segment).
+  const segments = path.split('/');
+  const bucketName = segments[0];
+  const objectPath = segments.slice(1).join('/');
+
+  // Gracefully skip paths that don't match any known bucket (e.g. mock paths
+  // that slipped through, legacy absolute URLs, or data: URIs).
+  if (!objectPath || !Object.values(BUCKET).includes(bucketName as never)) {
+    // If it already looks like a URL (http/https or data:), return as-is.
+    if (/^(https?:|data:)/.test(path)) return path;
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin()
+    .storage.from(bucketName)
+    .createSignedUrl(objectPath, URL_TTL_SECONDS);
+
+  if (error || !data?.signedUrl) {
+    console.error('[api] resolveStorageUrl failed:', error);
+    return null;
+  }
+  return data.signedUrl;
+}
+
 export async function createUploadUrl(request: Request): Promise<Response> {
   const caller = await getCaller(request);
   if (!caller) return fail('UNAUTHORIZED', 'Sign in to upload');

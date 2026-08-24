@@ -13,6 +13,7 @@
  */
 import { http, HttpResponse } from 'msw';
 import { z } from 'zod';
+import { get, set } from 'idb-keyval';
 
 import {
   CreateReportRequestSchema,
@@ -38,13 +39,19 @@ import {
 import { canTransition, REOPEN_THRESHOLD } from '../lib/contracts/enums';
 import {
   INCIDENTS,
-  INCIDENT_SUMMARIES,
   MY_REPORTS,
   MY_REPORT_DETAILS,
   PUBLIC_STATS,
   mockTicketId,
   mockUuid,
 } from './fixtures';
+import {
+  CATEGORY_DEPARTMENT,
+  priorityTier,
+  type Category,
+  type Department,
+} from '../lib/contracts/enums';
+import { computePriority } from '../lib/engine';
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
@@ -84,13 +91,233 @@ function page<T>(items: T[], cursor: string | undefined, limit: number) {
   return { items: slice, next_cursor: next, total: items.length };
 }
 
-/* ── mutable mock state ───────────────────────────────────────────────────── */
+/* ── localStorage-backed mock state ──────────────────────────────────────── */
+//
+// Persists across page reloads so a citizen report submitted in one tab is still
+// visible to the admin after they refresh. Falls back to the fixture seed when
+// localStorage is empty or the stored data can't be parsed.
+//
+// Keys are prefixed with the fixtures version so a code change that alters
+// INCIDENTS auto-busts the stale fixture cache. The citizen report keys use a
+// separate stable prefix so submitted reports survive a fixture bump.
 
-// Mutated by the handlers so a session feels real: submit a report and the
-// counter moves, change a status and the queue reflects it. Reset on reload.
-const incidents = INCIDENTS.map((i) => ({ ...i }));
-const myReports = [...MY_REPORTS];
-const myReportDetails = { ...MY_REPORT_DETAILS };
+const STORE_VERSION   = `msw-v2-${INCIDENTS.length}`;
+const KEY_INCIDENTS   = `${STORE_VERSION}:incidents`;
+const KEY_MY_REPORTS  = `msw-reports:myReports`;   // stable — survives fixture bumps
+const KEY_MY_DETAILS  = `msw-reports:myReportDetails`;
+
+function load<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function save(key: string, value: unknown): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage quota exceeded — silently skip; mock still works for this session.
+  }
+}
+
+// Hydrate from localStorage, seeding from fixtures on first load.
+const incidents       = load(KEY_INCIDENTS,  INCIDENTS.map((i) => ({ ...i })));
+const myReports       = load(KEY_MY_REPORTS, [...MY_REPORTS]);
+const myReportDetails = load(KEY_MY_DETAILS, { ...MY_REPORT_DETAILS });
+
+// Keep mock state in sync across browser tabs (e.g., citizen app vs admin dashboard).
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    try {
+      if (e.key === KEY_INCIDENTS && e.newValue) {
+        incidents.length = 0;
+        incidents.push(...JSON.parse(e.newValue));
+        // Force admin dashboard to refetch immediately without waiting for poll
+        window.dispatchEvent(new CustomEvent('msw:report-submitted'));
+      }
+      if (e.key === KEY_MY_REPORTS && e.newValue) {
+        myReports.length = 0;
+        myReports.push(...JSON.parse(e.newValue));
+      }
+      if (e.key === KEY_MY_DETAILS && e.newValue) {
+        const next = JSON.parse(e.newValue);
+        for (const k in myReportDetails) delete myReportDetails[k];
+        Object.assign(myReportDetails, next);
+      }
+    } catch {
+      // Ignore parse errors from other tabs
+    }
+  });
+}
+
+// Reconcile: any myReportDetails entry that references an incident_id not
+// present in the loaded incidents array means it was submitted after the last
+// fixture reset. Re-seed those incidents from the stored report so the admin
+// queue always reflects every citizen-submitted report.
+{
+  const knownIds = new Set(incidents.map((i) => i.incident_id));
+  // myReports carries the incident_id via the listItem we store — but
+  // myReportDetails has the full location we need for seedNewIncident.
+  // We iterate myReports (ordered newest-first) and rebuild any missing incident.
+  for (const r of [...myReports].reverse()) {
+    // Skip if the incident already exists in the loaded array.
+    // We identify the incident via the listItem stored alongside the report.
+    // The report list item doesn't carry incident_id directly, but the
+    // myReportDetails record does (as report_id key → we match by report_id).
+    const detail = myReportDetails[r.report_id];
+    if (!detail) continue;
+    // Check if any incident already has this report in its reports array.
+    const alreadyPresent = incidents.some(
+      (inc) => inc.reports?.some((rp: { report_id: string }) => rp.report_id === r.report_id)
+    );
+    if (alreadyPresent) continue;
+    // Seed a new incident for this orphaned report.
+    const bd = computePriority({
+      category: detail.category,
+      uniqueUserCount: 1,
+      daysOpen: 0,
+      previousIncidentId: null,
+    });
+    const department = CATEGORY_DEPARTMENT[detail.category as Category];
+    const newId = mockUuid();
+    incidents.push({
+      incident_id: newId,
+      category: detail.category,
+      thumbnail_url: detail.photo_url,
+      centroid: detail.location,
+      address: detail.address,
+      ward_name: null,
+      report_count: 1,
+      status: 'SUBMITTED',
+      department,
+      priority_score: bd.score,
+      priority_tier: bd.tier,
+      manual_override: false,
+      first_reported_at: detail.created_at,
+      age_days: 0,
+      flagged_mismatch: false,
+      is_recurrence: false,
+      priority_breakdown: bd,
+      reports: [{
+        report_id: detail.report_id,
+        ticket_id: detail.ticket_id,
+        photo_url: detail.photo_url,
+        location: detail.location,
+        gps_accuracy_m: 10,
+        description: detail.description,
+        severity_self: detail.severity_self,
+        voice_note_url: detail.voice_note_url,
+        created_at: detail.created_at,
+      }],
+      severity_consensus: {
+        MINOR:    detail.severity_self === 'MINOR'    ? 1 : 0,
+        MODERATE: detail.severity_self === 'MODERATE' ? 1 : 0,
+        SEVERE:   detail.severity_self === 'SEVERE'   ? 1 : 0,
+      },
+      status_history: [{
+        from_status: null,
+        to_status: 'SUBMITTED' as const,
+        at: detail.created_at,
+        actor_name: null,
+        note: null,
+      }],
+      assigned_to: null,
+      sla_due_at: null,
+      recurrence_chain: [],
+      resolved_at: null,
+      resolution_photo_url: null,
+      verification: { fixed: 0, not_fixed: 0, pending: 0 },
+    });
+    knownIds.add(newId);
+  }
+  // Persist the reconciled incidents so next load is immediate.
+  save(KEY_INCIDENTS, incidents);
+}
+
+// Convenience wrappers that mutate the array/object then immediately persist.
+function saveIncidents()      { save(KEY_INCIDENTS,  incidents); }
+function saveMyReports()      { save(KEY_MY_REPORTS, myReports); }
+function saveMyReportDetails(){ save(KEY_MY_DETAILS, myReportDetails); }
+
+/** Build a minimal IncidentDetail from a freshly submitted report. */
+function seedNewIncident(
+  body: {
+    category: Category;
+    location: { lat: number; lng: number };
+    gps_accuracy_m: number;
+    address?: string | null;
+    description?: string | null;
+    severity_self: 'MINOR' | 'MODERATE' | 'SEVERE';
+    photo_url: string;
+  },
+  reportId: string,
+  ticketId: string,
+  createdAt: string,
+) {
+  const bd = computePriority({
+    category: body.category,
+    uniqueUserCount: 1,
+    daysOpen: 0,
+    previousIncidentId: null,
+  });
+  const department: Department | null = CATEGORY_DEPARTMENT[body.category];
+  const incidentId = mockUuid();
+  incidents.push({
+    incident_id: incidentId,
+    category: body.category,
+    thumbnail_url: body.photo_url,
+    centroid: body.location,
+    address: body.address ?? `${body.location.lat.toFixed(4)}, ${body.location.lng.toFixed(4)}`,
+    ward_name: null,
+    report_count: 1,
+    status: 'SUBMITTED',
+    department,
+    priority_score: bd.score,
+    priority_tier: bd.tier,
+    manual_override: false,
+    first_reported_at: createdAt,
+    age_days: 0,
+    flagged_mismatch: false,
+    is_recurrence: false,
+    priority_breakdown: bd,
+    reports: [{
+      report_id: reportId,
+      ticket_id: ticketId,
+      photo_url: body.photo_url,
+      location: body.location,
+      gps_accuracy_m: body.gps_accuracy_m,
+      description: body.description ?? null,
+      severity_self: body.severity_self,
+      voice_note_url: null,
+      created_at: createdAt,
+    }],
+    severity_consensus: {
+      MINOR:    body.severity_self === 'MINOR'    ? 1 : 0,
+      MODERATE: body.severity_self === 'MODERATE' ? 1 : 0,
+      SEVERE:   body.severity_self === 'SEVERE'   ? 1 : 0,
+    },
+    status_history: [{
+      from_status: null,
+      to_status: 'SUBMITTED',
+      at: createdAt,
+      actor_name: null,
+      note: null,
+    }],
+    assigned_to: null,
+    sla_due_at: null,
+    recurrence_chain: [],
+    resolved_at: null,
+    resolution_photo_url: null,
+    verification: { fixed: 0, not_fixed: 0, pending: 0 },
+  });
+  saveIncidents();
+  return incidentId;
+}
 
 /* ── handlers ─────────────────────────────────────────────────────────────── */
 
@@ -101,17 +328,47 @@ export const handlers = [
     if (!parsed.success) return badRequest(parsed.error);
 
     const path = `mock/${parsed.data.kind.toLowerCase()}/${mockUuid()}`;
+    const url = `https://mock.storage.local/${path}`;
     return json(CreateUploadUrlResponseSchema, {
-      // Absorbed by the passthrough handler below so A's progress bar has
-      // something real to run against.
-      upload_url: `https://mock.storage.local/${path}`,
-      path,
+      upload_url: url,
+      // In mock mode, we return the full mock URL as the path so it skips the
+      // server-side resolveStorageUrl (which expects private Supabase paths).
+      path: url,
       expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
     });
   }),
 
-  /** Swallow the actual file PUT so the upload step completes offline. */
-  http.put('https://mock.storage.local/*', () => new HttpResponse(null, { status: 200 })),
+  /**
+   * Save uploaded mock images to IndexedDB.
+   * If we stored base64 strings in localStorage, we would instantly blow the
+   * 5MB quota and silently break cross-tab incident syncing.
+   */
+  http.put('https://mock.storage.local/:path*', async ({ params, request }) => {
+    try {
+      const pathKey = Array.isArray(params.path) ? params.path.join('/') : (params.path as string);
+      const blob = await request.blob();
+      await set(`mock/${pathKey}`, blob);
+    } catch {
+      // Silently fail if IDB is blocked.
+    }
+    return new HttpResponse(null, { status: 200 });
+  }),
+
+  /** Serve the mock images from IndexedDB directly to <img> tags. */
+  http.get('https://mock.storage.local/:path*', async ({ params }) => {
+    try {
+      const pathKey = Array.isArray(params.path) ? params.path.join('/') : (params.path as string);
+      const blob = await get<Blob>(`mock/${pathKey}`);
+      if (blob) {
+        return new HttpResponse(blob, {
+          headers: { 'Content-Type': blob.type },
+        });
+      }
+    } catch {
+      // IDB read failed.
+    }
+    return new HttpResponse(null, { status: 404 });
+  }),
 
   /* POST /api/reports — ingest + clustering result */
   http.post('/api/reports', async ({ request }) => {
@@ -136,12 +393,50 @@ export const handlers = [
       return Math.hypot(dLat, dLng) <= R;
     });
 
-    const clustered = Boolean(match);
-    if (match) match.report_count += 1;
-
     const report_id = mockUuid();
     const ticket_id = mockTicketId();
     const created_at = new Date().toISOString();
+
+    let incident_id: string;
+    let report_count: number;
+
+    if (match) {
+      // Cluster into existing incident — update its mutable state so the admin
+      // queue immediately reflects the new reporter count and photo.
+      match.report_count += 1;
+      match.reports.unshift({
+        report_id,
+        ticket_id,
+        photo_url: body.photo_url,
+        location: body.location,
+        gps_accuracy_m: body.gps_accuracy_m,
+        description: body.description ?? null,
+        severity_self: body.severity_self,
+        voice_note_url: body.voice_note_url ?? null,
+        created_at,
+      });
+      match.severity_consensus[body.severity_self] += 1;
+      // Recompute priority so the queue score reflects the new reporter.
+      const bd = computePriority({
+        category: match.category,
+        uniqueUserCount: match.report_count,
+        daysOpen: match.age_days,
+        previousIncidentId: match.is_recurrence ? 'dummy-id' : null,
+      });
+      match.priority_score = bd.score;
+      match.priority_tier = bd.tier;
+      match.priority_breakdown = bd;
+      // Drift thumbnail to the latest photo.
+      if (body.photo_url) match.thumbnail_url = body.photo_url;
+      incident_id = match.incident_id;
+      report_count = match.report_count;
+      saveIncidents();
+    } else {
+      // No cluster match — seed a brand-new incident and push it into the live
+      // array so the admin queue picks it up on the next refetch.
+      incident_id = seedNewIncident(body, report_id, ticket_id, created_at);
+      report_count = 1;
+    }
 
     const listItem = {
       report_id,
@@ -151,7 +446,7 @@ export const handlers = [
       address: body.address ?? match?.address ?? 'Dropped pin',
       status: 'SUBMITTED' as const,
       created_at,
-      report_count: match?.report_count ?? 1,
+      report_count,
       awaiting_verification: false,
     };
     myReports.unshift(listItem);
@@ -165,15 +460,23 @@ export const handlers = [
       resolution_photo_url: null,
       verified_by_me: null,
     };
+    saveMyReports();
+    saveMyReportDetails();
+
+    // Notify any open admin tab that the incident list has changed so it can
+    // refetch immediately rather than waiting for the 30-second poll.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('msw:report-submitted'));
+    }
 
     return json(
       CreateReportResponseSchema,
       {
         report_id,
         ticket_id,
-        incident_id: match?.incident_id ?? mockUuid(),
-        clustered,
-        report_count: match?.report_count ?? 1,
+        incident_id,
+        clustered: Boolean(match),
+        report_count,
         status: 'SUBMITTED',
         created_at,
       },
@@ -217,6 +520,8 @@ export const handlers = [
     }
 
     detail.verified_by_me = parsed.data.fixed;
+    saveIncidents();
+    saveMyReportDetails();
     return json(VerifyReportResponseSchema, {
       report_id: detail.report_id,
       incident_status: inc?.status ?? detail.status,
@@ -233,16 +538,21 @@ export const handlers = [
     if (!parsed.success) return badRequest(parsed.error);
     const q = parsed.data;
 
-    let rows = INCIDENT_SUMMARIES.map(
-      (s) => incidents.find((i) => i.incident_id === s.incident_id) ?? s,
-    ).map(({ incident_id, category, thumbnail_url, centroid, address, ward_name,
-             report_count, status, department, priority_score, priority_tier,
-             manual_override, first_reported_at, age_days, flagged_mismatch,
-             is_recurrence }) => ({
+    // Use the live `incidents` array — this includes both the seed fixtures and
+    // any incidents that were created by POST /api/reports during this session.
+    let rows = incidents.map(({ incident_id, category, thumbnail_url, centroid,
+      address, ward_name, report_count, status, department, priority_score,
+      priority_tier, manual_override, first_reported_at, age_days,
+      flagged_mismatch, is_recurrence }) => ({
       incident_id, category, thumbnail_url, centroid, address, ward_name,
       report_count, status, department, priority_score, priority_tier,
       manual_override, first_reported_at, age_days, flagged_mismatch, is_recurrence,
     }));
+
+    // Default view is the open queue (mirrors the real API behaviour).
+    if (!q.status) {
+      rows = rows.filter(r => !['RESOLVED','VERIFIED','REJECTED','DUPLICATE'].includes(r.status));
+    }
 
     if (q.category) rows = rows.filter((r) => r.category === q.category);
     if (q.status) rows = rows.filter((r) => r.status === q.status);
@@ -332,6 +642,7 @@ export const handlers = [
       if (patch.priority_score !== null) inc.priority_score = patch.priority_score;
     }
 
+    saveIncidents();
     return json(IncidentDetailSchema, inc);
   }),
 
@@ -354,6 +665,7 @@ export const handlers = [
       merged++;
     }
 
+    saveIncidents();
     return json(MergeIncidentsResponseSchema, {
       target_incident_id: target.incident_id,
       merged_count: merged,

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useTheme } from './_lib/theme-context';
 import {
   CATEGORIES, CATEGORY_LABEL,
@@ -13,7 +14,31 @@ import {
 import type { IncidentSummary } from '../../lib/contracts/incident';
 import { TIER_COLORS, STATUS_COLORS, CATEGORY_ICONS } from './_lib/constants';
 import Map from './_components/Map';
-import { INCIDENT_SUMMARIES } from '../../mocks/fixtures';
+import { supabaseBrowser } from '../../lib/supabase/client';
+
+/* ── API helper ───────────────────────────────────────────────────────────── */
+
+async function fetchIncidents(params: URLSearchParams): Promise<{
+  items: IncidentSummary[];
+  next_cursor: string | null;
+  total: number;
+}> {
+  // Send the Supabase session token so the real API can auth the caller.
+  // When NEXT_PUBLIC_USE_MOCKS=true, MSW intercepts before the network and the
+  // token is ignored — so this works in both mock and live modes.
+  const session = await supabaseBrowser().auth.getSession();
+  const token = session.data.session?.access_token;
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`/api/incidents?${params.toString()}`, { headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 /* ── KPI Card ─────────────────────────────────────────────────────────────── */
 
@@ -75,7 +100,9 @@ const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest First' },
   { value: 'oldest', label: 'Oldest First' },
   { value: 'most_reported', label: 'Most Reported' },
-];
+] as const;
+
+type SortValue = typeof SORT_OPTIONS[number]['value'];
 
 /* ── Command Center Page ──────────────────────────────────────────────────── */
 
@@ -88,34 +115,59 @@ export default function AdminCommandCenter() {
   const [filterStatus, setFilterStatus]     = useState('');
   const [filterDept, setFilterDept]         = useState('');
   const [filterTier, setFilterTier]         = useState('');
-  const [sort, setSort]                     = useState('priority');
+  const [sort, setSort]                     = useState<SortValue>('priority');
 
+  // Build query params that mirror the IncidentListQuerySchema
+  const queryParams = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set('sort', sort);
+    p.set('limit', '100'); // schema max — queue is filtered client-side for instant UX
+    if (filterCategory) p.set('category', filterCategory);
+    if (filterStatus)   p.set('status',   filterStatus);
+    if (filterDept)     p.set('department', filterDept);
+    // priority_tier is post-filtered server-side (derived field, not a DB column)
+    return p;
+  }, [sort, filterCategory, filterStatus, filterDept]);
 
-  /* Filtered + sorted rows */
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['incidents', queryParams.toString()],
+    queryFn:  () => fetchIncidents(queryParams),
+    // Refresh every 30 seconds so new citizen reports surface without a page reload
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  // In mock mode the MSW handler fires 'msw:report-submitted' on the window
+  // after every successful POST /api/reports. Listen here and refetch immediately
+  // so the admin sees the new incident without waiting for the 30-second poll.
+  useEffect(() => {
+    const handler = () => refetch();
+    window.addEventListener('msw:report-submitted', handler);
+    return () => window.removeEventListener('msw:report-submitted', handler);
+  }, [refetch]);
+
+  const allItems: IncidentSummary[] = data?.items ?? [];
+
+  // Client-side priority_tier filter (server can't filter a derived field by SQL)
   const incidents = useMemo(() => {
-    let rows = [...INCIDENT_SUMMARIES] as IncidentSummary[];
-    if (filterCategory) rows = rows.filter(r => r.category === filterCategory);
-    if (filterStatus)   rows = rows.filter(r => r.status === filterStatus);
-    if (filterDept)     rows = rows.filter(r => r.department === filterDept);
-    if (filterTier)     rows = rows.filter(r => r.priority_tier === filterTier);
-    const sorters: Record<string, (a: IncidentSummary, b: IncidentSummary) => number> = {
-      priority:      (a, b) => b.priority_score - a.priority_score,
-      newest:        (a, b) => Date.parse(b.first_reported_at) - Date.parse(a.first_reported_at),
-      oldest:        (a, b) => Date.parse(a.first_reported_at) - Date.parse(b.first_reported_at),
-      most_reported: (a, b) => b.report_count - a.report_count,
-    };
-    return rows.sort(sorters[sort] ?? sorters.priority);
-  }, [filterCategory, filterStatus, filterDept, filterTier, sort]);
+    if (!filterTier) return allItems;
+    return allItems.filter(r => r.priority_tier === filterTier);
+  }, [allItems, filterTier]);
 
-  /* KPI stats */
-  const all = INCIDENT_SUMMARIES;
-  const openCount    = all.filter(i => !['RESOLVED','VERIFIED','REJECTED','DUPLICATE'].includes(i.status)).length;
-  const unassigned   = all.filter(i => ['SUBMITTED','ACKNOWLEDGED'].includes(i.status)).length;
-  const resolved     = all.filter(i => i.status === 'RESOLVED').length;
-  const avgAge       = all.length ? (all.reduce((s, i) => s + i.age_days, 0) / all.length).toFixed(1) : '0';
+  /* KPI stats — derived from the full unfiltered page */
+  const openCount  = allItems.filter(i => !['RESOLVED','VERIFIED','REJECTED','DUPLICATE'].includes(i.status)).length;
+  const unassigned = allItems.filter(i => ['SUBMITTED','ACKNOWLEDGED'].includes(i.status)).length;
+  const resolved   = allItems.filter(i => i.status === 'RESOLVED').length;
+  const avgAge     = allItems.length
+    ? (allItems.reduce((s, i) => s + i.age_days, 0) / allItems.length).toFixed(1)
+    : '0';
 
-
-  const sel = { background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)', borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--admin-text-primary)', outline: 'none', cursor: 'pointer', appearance: 'none' as const };
+  const sel = {
+    background: 'var(--admin-bg-base)', border: '1px solid var(--admin-border)',
+    borderRadius: 7, padding: '6px 10px', fontSize: 12,
+    color: 'var(--admin-text-primary)', outline: 'none', cursor: 'pointer',
+    appearance: 'none' as const,
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--admin-bg-base)' }}>
@@ -123,10 +175,10 @@ export default function AdminCommandCenter() {
       {/* ── KPI strip ── */}
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--admin-border)', background: 'var(--admin-bg-surface)', flexShrink: 0 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
-          <KPICard label="Open Incidents"     value={openCount}  color="var(--color-semantic-info)" icon="🚨" />
+          <KPICard label="Open Incidents"     value={openCount}  color="var(--color-semantic-info)"    icon="🚨" />
           <KPICard label="Unassigned"          value={unassigned} color="var(--color-semantic-warning)" icon="⏳" />
-          <KPICard label="Resolved This Week" value={resolved}   color="var(--color-semantic-success)" icon="✅" />
-          <KPICard label="Avg Age (Days)"     value={avgAge}     color="var(--color-semantic-brand)" icon="📅" />
+          <KPICard label="Resolved This Week"  value={resolved}   color="var(--color-semantic-success)" icon="✅" />
+          <KPICard label="Avg Age (Days)"      value={avgAge}     color="var(--color-semantic-brand)"   icon="📅" />
         </div>
       </div>
 
@@ -160,9 +212,22 @@ export default function AdminCommandCenter() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--admin-text-primary)' }}>Incident Queue</span>
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'var(--bg-semantic-info)', border: '1px solid var(--color-semantic-info)', color: 'var(--color-semantic-info)' }}>
-                  {incidents.length}
+                  {isLoading ? '…' : incidents.length}
                 </span>
               </div>
+              {/* Manual refresh button */}
+              <button
+                onClick={() => refetch()}
+                title="Refresh queue"
+                style={{
+                  background: 'none', border: '1px solid var(--admin-border)',
+                  borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
+                  fontSize: 12, color: 'var(--admin-text-secondary)',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                🔄 Refresh
+              </button>
             </div>
 
             {/* Filter dropdowns */}
@@ -172,7 +237,7 @@ export default function AdminCommandCenter() {
                 { label: 'Status',   val: filterStatus,   set: setFilterStatus,   opts: STATUSES.map(s => ({ v: s, l: s.replace('_',' ') })) },
                 { label: 'Dept',     val: filterDept,     set: setFilterDept,     opts: DEPARTMENTS.map(d => ({ v: d, l: DEPARTMENT_LABEL[d] })) },
                 { label: 'Priority', val: filterTier,     set: setFilterTier,     opts: PRIORITY_TIERS.map(t => ({ v: t, l: t })) },
-                { label: 'Sort',     val: sort,           set: setSort,           opts: SORT_OPTIONS.map(s => ({ v: s.value, l: s.label })) },
+                { label: 'Sort',     val: sort,           set: (v: string) => setSort(v as SortValue), opts: SORT_OPTIONS.map(s => ({ v: s.value, l: s.label })) },
               ].map(({ label, val, set, opts }) => (
                 <div key={label}>
                   <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--admin-text-muted)', marginBottom: 4 }}>{label}</div>
@@ -187,7 +252,22 @@ export default function AdminCommandCenter() {
 
           {/* List */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {incidents.map(inc => (
+            {isLoading && (
+              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--admin-text-muted)', fontSize: 14 }}>
+                Loading incidents…
+              </div>
+            )}
+
+            {isError && (
+              <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--color-semantic-danger)', fontSize: 14 }}>
+                Failed to load incidents.{' '}
+                <button onClick={() => refetch()} style={{ color: 'var(--color-semantic-info)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!isLoading && !isError && incidents.map(inc => (
               <Link key={inc.incident_id} href={`/admin/incidents/${inc.incident_id}`}
                 style={{
                   display: 'block', padding: '16px',
@@ -199,11 +279,11 @@ export default function AdminCommandCenter() {
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ 
+                  <div style={{
                     width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                     background: 'var(--admin-bg-active)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-                    border: '1px solid var(--admin-border)'
+                    border: '1px solid var(--admin-border)',
                   }}>
                     {CATEGORY_ICONS[inc.category] ?? '📋'}
                   </div>
@@ -211,7 +291,11 @@ export default function AdminCommandCenter() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
                       <PriorityBadge tier={inc.priority_tier} score={inc.priority_score} />
                       <StatusBadge status={inc.status} />
-                      {inc.flagged_mismatch && <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', border: '1px solid var(--color-semantic-warning)', fontWeight: 700 }}>⚠ Mismatch</span>}
+                      {inc.flagged_mismatch && (
+                        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, background: 'var(--bg-semantic-warning)', color: 'var(--color-semantic-warning)', border: '1px solid var(--color-semantic-warning)', fontWeight: 700 }}>
+                          ⚠ Mismatch
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--admin-text-primary)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {inc.address}
@@ -228,7 +312,7 @@ export default function AdminCommandCenter() {
               </Link>
             ))}
 
-            {incidents.length === 0 && (
+            {!isLoading && !isError && incidents.length === 0 && (
               <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--admin-text-muted)', fontSize: 14 }}>
                 No incidents match the current filters.
               </div>

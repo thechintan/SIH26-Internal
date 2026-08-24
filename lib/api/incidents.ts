@@ -40,6 +40,7 @@ import {
 } from '../supabase/rows';
 import { getCaller, isAdmin, isStaff } from '../supabase/request';
 import { fail, ok, parseBody, parseQuery } from './respond';
+import { resolveStorageUrl } from './uploads';
 
 /** Shape of the public_stats() RPC result. */
 type PublicStatsRow = {
@@ -221,17 +222,19 @@ export async function getIncident(request: Request, incidentId: string): Promise
   const detail: IncidentDetail = {
     ...toSummary(row, reports?.[0]?.photo_url ?? null),
     priority_breakdown: row.priority_breakdown,
-    reports: (reports ?? []).map((r) => ({
-      report_id: r.id,
-      ticket_id: r.ticket_id,
-      photo_url: r.photo_url,
-      location: { lat: r.lat, lng: r.lng },
-      gps_accuracy_m: r.gps_accuracy_m,
-      description: r.description,
-      severity_self: r.severity_self,
-      voice_note_url: r.voice_note_url,
-      created_at: r.created_at,
-    })),
+    reports: await Promise.all(
+      (reports ?? []).map(async (r) => ({
+        report_id: r.id,
+        ticket_id: r.ticket_id,
+        photo_url: (await resolveStorageUrl(r.photo_url)) ?? '',
+        location: { lat: r.lat, lng: r.lng },
+        gps_accuracy_m: r.gps_accuracy_m,
+        description: r.description,
+        severity_self: r.severity_self,
+        voice_note_url: r.voice_note_url,
+        created_at: r.created_at,
+      })),
+    ),
     severity_consensus: consensus,
     status_history: (history ?? []).map((h) => ({
       from_status: h.from_status,
@@ -244,7 +247,7 @@ export async function getIncident(request: Request, incidentId: string): Promise
     sla_due_at: row.sla_due_at,
     recurrence_chain: chain,
     resolved_at: row.resolved_at,
-    resolution_photo_url: row.resolution_photo_url,
+    resolution_photo_url: await resolveStorageUrl(row.resolution_photo_url),
     verification: {
       fixed: fixed,
       not_fixed: notFixed,

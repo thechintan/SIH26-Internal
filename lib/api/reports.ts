@@ -35,6 +35,7 @@ import {
 } from '../supabase/rows';
 import { fail, ok, parseBody, parseQuery } from './respond';
 import { clusterReport } from './clustering';
+import { resolveStorageUrl } from './uploads';
 
 /* ── POST /api/reports ────────────────────────────────────────────────────── */
 
@@ -148,20 +149,22 @@ export async function listMyReports(request: Request): Promise<Response> {
     return fail('INTERNAL', 'Could not load your reports');
   }
 
-  const items: MyReportListItem[] = (data ?? []).map((row) => {
-    const incident = embeddedOne(row.incidents);
-    return {
-      report_id: row.id,
-      ticket_id: row.ticket_id,
-      category: row.category,
-      photo_url: row.photo_url,
-      address: row.address ?? 'Location pinned',
-      status: incident?.status ?? 'SUBMITTED',
-      created_at: row.created_at,
-      report_count: incident?.report_count ?? 1,
-      awaiting_verification: incident?.status === 'RESOLVED',
-    };
-  });
+  const items: MyReportListItem[] = await Promise.all(
+    (data ?? []).map(async (row) => {
+      const incident = embeddedOne(row.incidents);
+      return {
+        report_id: row.id,
+        ticket_id: row.ticket_id,
+        category: row.category,
+        photo_url: (await resolveStorageUrl(row.photo_url)) ?? '',
+        address: row.address ?? 'Location pinned',
+        status: incident?.status ?? 'SUBMITTED',
+        created_at: row.created_at,
+        report_count: incident?.report_count ?? 1,
+        awaiting_verification: incident?.status === 'RESOLVED',
+      };
+    }),
+  );
 
   const next = from + limit < (count ?? 0) ? String(from + limit) : null;
   return ok({ items, next_cursor: next, total: count ?? items.length });
@@ -218,7 +221,7 @@ export async function getReport(request: Request, reportId: string): Promise<Res
     report_id: row.id,
     ticket_id: row.ticket_id,
     category: row.category,
-    photo_url: row.photo_url,
+    photo_url: (await resolveStorageUrl(row.photo_url)) ?? '',
     address: row.address ?? 'Location pinned',
     status: incident?.status ?? 'SUBMITTED',
     created_at: row.created_at,
@@ -229,7 +232,7 @@ export async function getReport(request: Request, reportId: string): Promise<Res
     severity_self: row.severity_self,
     voice_note_url: row.voice_note_url,
     timeline,
-    resolution_photo_url: incident?.resolution_photo_url ?? null,
+    resolution_photo_url: await resolveStorageUrl(incident?.resolution_photo_url),
     verified_by_me: myVerification ? myVerification.fixed : null,
   };
 
